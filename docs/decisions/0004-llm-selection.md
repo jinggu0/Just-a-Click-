@@ -18,11 +18,11 @@
 | 파일 크기 | 5,851,112,224 bytes, 약 5.85 GB / 5.45 GiB |
 | 배포자가 보고한 SHA-256 | `068bae163faa96ad48032daf4e071a6a28fe67d8dcc95367609c2ff165e52738` |
 | 라이선스 | Apache-2.0 |
-| 추론 런타임 | llama.cpp, 정확한 빌드 버전은 실행 검증 후 별도 고정 |
+| 추론 런타임 | llama.cpp b10994 / commit 0a8b29a60, Windows CPU·Vulkan 실행 패키지 고정 |
 | 생성 모드 | non-thinking을 템플릿 설정으로 명시 |
 | 배포 방식 | Install Manager 다운로드, 해시 확인 후 활성화 |
 
-위 revision·크기·해시는 2026-09-16 Hugging Face 공개 모델 API에서 조회했다. 파일 전체를 다운로드해 해시를 직접 검증한 상태는 아니다. 설치 시 반드시 실제 파일을 검증한다. 해당 시점에 두 저장소의 접근 제한은 `gated: false`로 조회되었다. 라이선스 원문과 필요한 고지를 설치 패키지에 보존한다. [공식 GGUF 모델](https://huggingface.co/Qwen/Qwen3-8B-GGUF), [고정 revision 파일 목록](https://huggingface.co/Qwen/Qwen3-8B-GGUF/tree/7c41481f57cb95916b40956ab2f0b139b296d974).
+위 revision·크기·해시는 2026-09-16 Hugging Face 공개 모델 API에서 조회했다. 2026-09-17 다운로드를 완료하고 실제 파일 전체의 SHA-256 일치를 확인했다. 해당 조회 시점에 두 저장소의 접근 제한은 `gated: false`였다. 라이선스 원문도 로컬에 저장했으며 설치 패키지에 필요한 고지를 보존한다. [공식 GGUF 모델](https://huggingface.co/Qwen/Qwen3-8B-GGUF), [고정 revision 파일 목록](https://huggingface.co/Qwen/Qwen3-8B-GGUF/tree/7c41481f57cb95916b40956ab2f0b139b296d974).
 
 ## 2. 선택 근거
 

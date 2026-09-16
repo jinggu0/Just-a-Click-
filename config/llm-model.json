@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "model_id": "jac-qwen3-8b-baseline-q5km",
-  "status": "selected_not_benchmarked",
+  "status": "synthetic_smoke_completed_not_release_validated",
   "fine_tuned": false,
   "base_model": {
     "repository": "Qwen/Qwen3-8B",
@@ -14,13 +14,14 @@
     "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/7c41481f57cb95916b40956ab2f0b139b296d974/Qwen3-8B-Q5_K_M.gguf",
     "size_bytes": 5851112224,
     "sha256": "068bae163faa96ad48032daf4e071a6a28fe67d8dcc95367609c2ff165e52738",
-    "hash_source": "publisher_api_not_locally_verified",
+    "hash_source": "publisher_api_and_local_sha256_verified",
     "license": "Apache-2.0",
     "license_url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/7c41481f57cb95916b40956ab2f0b139b296d974/LICENSE"
   },
   "runtime": {
     "engine": "llama.cpp",
-    "build_revision": null,
+    "build_revision": "0a8b29a60",
+    "release_tag": "b10994",
     "reference_backend": "cpu",
     "preferred_acceleration_to_validate": "vulkan",
     "alternative_acceleration_to_validate": "sycl"

@@ -1,0 +1,108 @@
+{
+  "backend": "vulkan",
+  "runtime_tag": "b10994",
+  "model_id": "jac-qwen3-8b-baseline-q5km",
+  "fixture_id": "meeting-smoke-v1",
+  "context_tokens": 16384,
+  "threads": 8,
+  "runs": [
+    {
+      "run": 1,
+      "request_to_saved_seconds": 87.36636799992993,
+      "startup_plus_request_seconds": 122.96744009992108,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "usage": {
+        "completion_tokens": 292,
+        "prompt_tokens": 446,
+        "total_tokens": 738,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 446,
+        "prompt_ms": 5154.677,
+        "prompt_per_token_ms": 11.557571748878923,
+        "prompt_per_second": 86.52336509154696,
+        "predicted_n": 292,
+        "predicted_ms": 82161.704,
+        "predicted_per_token_ms": 282.34262542955327,
+        "predicted_per_second": 3.5417960659627994
+      }
+    },
+    {
+      "run": 2,
+      "request_to_saved_seconds": 86.18768089986406,
+      "startup_plus_request_seconds": null,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "usage": {
+        "completion_tokens": 292,
+        "prompt_tokens": 446,
+        "total_tokens": 738,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 446,
+        "prompt_ms": 3108.858,
+        "prompt_per_token_ms": 6.970533632286996,
+        "prompt_per_second": 143.46103939131348,
+        "predicted_n": 292,
+        "predicted_ms": 82957.589,
+        "predicted_per_token_ms": 285.0776254295533,
+        "predicted_per_second": 3.507816506094457
+      }
+    },
+    {
+      "run": 3,
+      "request_to_saved_seconds": 80.59793859999627,
+      "startup_plus_request_seconds": null,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "usage": {
+        "completion_tokens": 292,
+        "prompt_tokens": 446,
+        "total_tokens": 738,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 446,
+        "prompt_ms": 3267.637,
+        "prompt_per_token_ms": 7.326540358744395,
+        "prompt_per_second": 136.4900691233451,
+        "predicted_n": 292,
+        "predicted_ms": 77276.067,
+        "predicted_per_token_ms": 265.55349484536083,
+        "predicted_per_second": 3.7657195985401275
+      }
+    }
+  ],
+  "scope": "synthetic short transcript; not four-hour or STT validation",
+  "startup_seconds": 35.60107209999114,
+  "status": "completed",
+  "reviewed_outputs": [
+    {
+      "run": 1,
+      "content": "{\n  \"title\": \"딸깍 앱 로컬 저장 방식 결정 회의\",\n  \"decisions\": [\n    {\n      \"content\": \"서버 업로드 제안은 취소합니다. 원본 녹음과 전사문은 사용자 PC에만 저장하기로 확정했습니다.\",\n      \"source_refs\": [\"s2\"]\n    },\n    {\n      \"content\": \"모델 파일은 다운로드 후 SHA-256을 확인해야 합니다. 해시가 다르면 설치 완료로 처리하면 안 됩니다.\",\n      \"source_refs\": [\"s4\"]\n    },\n    {\n      \"content\": \"요약 실행부터 저장까지 2분이 목표입니다. 음성 전사 시간은 이 2분에 포함하지 않습니다.\",\n      \"source_refs\": [\"s5\"]\n    }\n  ],\n  \"actions\": [\n    {\n      \"content\": \"지민이 설치 관리자 다운로드 재시도 기능을 맡습니다.\",\n      \"source_refs\": [\"s3\"],\n      \"owner\": \"지민\",\n      \"deadline\": null\n    },\n    {\n      \"content\": \"GPU 가속은 아직 측정하지 않았습니다. 빨라졌다고 발표하면 안 됩니다.\",\n      \"source_refs\": [\"s6\"]\n    }\n  ],\n  \"open_questions\": []\n}"
+    },
+    {
+      "run": 2,
+      "content": "{\n  \"title\": \"딸깍 앱 로컬 저장 방식 결정 회의\",\n  \"decisions\": [\n    {\n      \"content\": \"서버 업로드 제안은 취소합니다. 원본 녹음과 전사문은 사용자 PC에만 저장하기로 확정했습니다.\",\n      \"source_refs\": [\"s2\"]\n    },\n    {\n      \"content\": \"모델 파일은 다운로드 후 SHA-256을 확인해야 합니다. 해시가 다르면 설치 완료로 처리하면 안 됩니다.\",\n      \"source_refs\": [\"s4\"]\n    },\n    {\n      \"content\": \"요약 실행부터 저장까지 2분이 목표입니다. 음성 전사 시간은 이 2분에 포함하지 않습니다.\",\n      \"source_refs\": [\"s5\"]\n    }\n  ],\n  \"actions\": [\n    {\n      \"content\": \"지민이 설치 관리자 다운로드 재시도 기능을 맡습니다.\",\n      \"source_refs\": [\"s3\"],\n      \"owner\": \"지민\",\n      \"deadline\": null\n    },\n    {\n      \"content\": \"GPU 가속은 아직 측정하지 않았습니다. 빨라졌다고 발표하면 안 됩니다.\",\n      \"source_refs\": [\"s6\"]\n    }\n  ],\n  \"open_questions\": []\n}"
+    },
+    {
+      "run": 3,
+      "content": "{\n  \"title\": \"딸깍 앱 로컬 저장 방식 결정 회의\",\n  \"decisions\": [\n    {\n      \"content\": \"서버 업로드 제안은 취소합니다. 원본 녹음과 전사문은 사용자 PC에만 저장하기로 확정했습니다.\",\n      \"source_refs\": [\"s2\"]\n    },\n    {\n      \"content\": \"모델 파일은 다운로드 후 SHA-256을 확인해야 합니다. 해시가 다르면 설치 완료로 처리하면 안 됩니다.\",\n      \"source_refs\": [\"s4\"]\n    },\n    {\n      \"content\": \"요약 실행부터 저장까지 2분이 목표입니다. 음성 전사 시간은 이 2분에 포함하지 않습니다.\",\n      \"source_refs\": [\"s5\"]\n    }\n  ],\n  \"actions\": [\n    {\n      \"content\": \"지민이 설치 관리자 다운로드 재시도 기능을 맡습니다.\",\n      \"source_refs\": [\"s3\"],\n      \"owner\": \"지민\",\n      \"deadline\": null\n    },\n    {\n      \"content\": \"GPU 가속은 아직 측정하지 않았습니다. 빨라졌다고 발표하면 안 됩니다.\",\n      \"source_refs\": [\"s6\"]\n    }\n  ],\n  \"open_questions\": []\n}"
+    }
+  ]
+}

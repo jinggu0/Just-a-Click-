@@ -1,0 +1,17 @@
+{
+  "tag": "b10994",
+  "assets": [
+    {
+      "backend": "cpu",
+      "filename": "llama-b10994-bin-win-cpu-x64.zip",
+      "size_bytes": 18428809,
+      "sha256": "5cb951125eb8467283d10d38672dc7687c3c1199d9891b130a211e73ab847244"
+    },
+    {
+      "backend": "vulkan",
+      "filename": "llama-b10994-bin-win-vulkan-x64.zip",
+      "size_bytes": 31691004,
+      "sha256": "5b1e6f1897a5aac6b6af89bdb230a8fe5660630064987ef3484a9122fbd99bb4"
+    }
+  ]
+}

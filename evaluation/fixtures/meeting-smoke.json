@@ -1,0 +1,15 @@
+{
+  "id": "meeting-smoke-v1",
+  "source": "Project-authored synthetic transcript; not real audio or a quality benchmark",
+  "transcript": "[s1 00:00] 오늘은 딸깍 앱의 로컬 저장 방식을 결정합니다. 처음에는 녹음 파일을 서버에 올리자는 제안이 있었습니다.\n[s2 00:20] 하지만 서버 업로드 제안은 취소합니다. 원본 녹음과 전사문은 사용자 PC에만 저장하기로 확정했습니다.\n[s3 00:40] 지민이 설치 관리자 다운로드 재시도 기능을 맡습니다. 마감일은 아직 정하지 않았습니다.\n[s4 01:00] 모델 파일은 다운로드 후 SHA-256을 확인해야 합니다. 해시가 다르면 설치 완료로 처리하면 안 됩니다.\n[s5 01:20] 요약 실행부터 저장까지 2분이 목표입니다. 음성 전사 시간은 이 2분에 포함하지 않습니다.\n[s6 01:40] GPU 가속은 아직 측정하지 않았습니다. 빨라졌다고 발표하면 안 됩니다.\n[s7 02:00] 오늘 점심은 국수였고 날씨가 좋았습니다. 이는 이번 안건과 관계없습니다.",
+  "system": "한국어 회의 요약을 JSON으로 작성한다. 제공된 전사문만 근거로 사용한다. 결정 사항, 후속 작업, 미결 사항을 구분한다. 취소된 제안을 확정 결정으로 쓰지 않는다. 담당자와 기한은 명시된 경우에만 기재하고 없으면 null로 둔다. 각 항목에 source_refs로 s1~s7 중 근거 ID를 넣는다. 잡담은 제외한다. 결과에는 title, decisions, actions, open_questions 필드를 포함한다. 설명이나 사고 과정을 출력하지 않는다.",
+  "review_checklist": [
+    "Server upload is canceled; recordings and transcripts stay local",
+    "Jimin owns installer download retry; deadline is null",
+    "SHA-256 mismatch must not mark installation complete",
+    "Two minutes excludes transcription time",
+    "GPU acceleration remains unmeasured",
+    "Lunch and weather omitted",
+    "All factual items have valid supporting source IDs"
+  ]
+}
