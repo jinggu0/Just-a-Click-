@@ -1,0 +1,57 @@
+# Secrets and machine-local settings
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local
+
+# Dependency and interpreter caches
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Generated build, test and installer output
+/dist/
+/build/
+/out/
+/coverage/
+/artifacts/
+/target/
+/src-tauri/target/
+*.log
+*.tmp
+
+# Local AI weights and downloaded runtime payloads
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.onnx
+/models/
+/runtimes/
+/downloads/
+/checkpoints/
+
+# Private working data; keep public schemas and fixtures elsewhere
+/data/
+/recordings/
+/transcripts/
+/attachments/
+/summaries/
+/evaluation/private/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# OS-generated metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

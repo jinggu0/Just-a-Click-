@@ -1,2 +1,12 @@
 # Just-a-Click-
 내가 필요해서 만드는 AI 요약 서비스
+
+## 프로젝트 문서
+
+- [제품 요구사항 정의서](docs/PRD.md)
+- [개발 로드맵](docs/ROADMAP.md)
+- [M0 기술 검증 계획](docs/M0-VALIDATION.md)
+- [LLM 모델 선정](docs/decisions/0004-llm-selection.md)
+- [LLM 지역화·개량 계획](docs/LLM-SPECIALIZATION.md)
+- [에이전트 작업 지침](AGENTS.md)
+- [Claude 작업 지침](CLAUDE.md)
