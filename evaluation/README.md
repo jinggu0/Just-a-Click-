@@ -40,6 +40,8 @@ python scripts/feasibility.py evaluation/results/<날짜>-llama-bench-all.json -
 - 오래 걸리는 측정은 `--stage screen`과 `--stage depth --threads <스레드> --flash-attn <on|off>`로 나눠 실행할 수 있다.
 - `feasibility.py`는 측정 처리량과 결정 0006의 가정(발화 속도, 음절당 토큰, 구간 출력량 등)으로 녹음 종료 후 5분·다시 요약 1시간 목표를 추정한다. 결과는 추정이며 실제 앱 지연시간이나 요약 품질 통과가 아니다. 한국어 표는 인코딩 문제를 피하려고 `--markdown` 파일로만 쓴다.
 
+`benchmark_llm.py --response-format`은 같은 엄격한 프롬프트에서 서버 출력 제약만 바꾸는 진단 옵션이다. `schema`(strict 기본 동작), `json`, `none`의 생성 속도를 비교해 속도 저하가 문법 제약 때문인지 확인한다. `none`은 출력이 계약 검증에 실패할 수 있으며, 이때의 종료 코드 1은 예상된 결과다. `--threads`는 서버 CPU 스레드 수를 바꾼다. 보고서의 `response_format`과 `threads`에 실행 조건이 남는다.
+
 ## 측정 범위
 
 `meeting-smoke.json`은 프로젝트에서 직접 작성한 합성 회의문이다. 개인정보나 실제 녹음은 포함하지 않는다. 취소된 제안, 담당자·미정 기한, 전사 시간 제외, 미검증 가속, 잡담을 올바르게 처리하는지 수동 검수한다.

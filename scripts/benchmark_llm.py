@@ -15,6 +15,19 @@ from summary_contract import (STRICT_INSTRUCTION, parse_segments, schema_for_sou
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def response_format_for(mode, strict, schema):
+    """Server output constraint. 'none' exists only to isolate grammar cost in diagnostics."""
+    if mode == 'auto':
+        mode = 'schema' if strict else 'json'
+    if mode == 'schema':
+        return {'type': 'json_object', 'schema': schema}
+    if mode == 'json':
+        return {'type': 'json_object'}
+    if mode == 'none':
+        return None
+    raise ValueError(f'Unknown response format: {mode}')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--backend', choices=['cpu', 'vulkan'], required=True)
@@ -28,6 +41,9 @@ def main():
     parser.add_argument('--probe-only', action='store_true')
     parser.add_argument('--batch-size', type=int, default=2048)
     parser.add_argument('--ubatch-size', type=int, default=512)
+    parser.add_argument('--threads', type=int, default=8)
+    parser.add_argument('--response-format', choices=['auto', 'schema', 'json', 'none'],
+                        default='auto', help='Diagnostics: vary only the server output constraint')
     args = parser.parse_args()
     if args.runs < 1:
         parser.error('--runs must be positive')
@@ -37,11 +53,18 @@ def main():
         parser.error('--probe-only requires --prefill-tokens')
     if not 1 <= args.ubatch_size <= args.batch_size <= 16384:
         parser.error('Require 1 <= ubatch-size <= batch-size <= 16384')
+    if args.threads < 1:
+        parser.error('--threads must be positive')
+    if args.response_format == 'schema' and not args.strict:
+        parser.error('--response-format schema requires the strict contract prompt')
     model = json.loads((ROOT / 'config/llm-model.json').read_text('utf-8'))
     runtime = json.loads((ROOT / 'config/llama-runtime.json').read_text('utf-8'))
     fixture = json.loads((ROOT / 'evaluation/fixtures/meeting-smoke.json').read_text('utf-8'))
     segments = parse_segments(fixture['transcript'])
     schema = schema_for_sources(segments)
+    response_format = response_format_for(args.response_format, args.strict, schema)
+    format_name = ('none' if response_format is None
+                   else 'schema' if 'schema' in response_format else 'json')
     system = fixture['system']
     if args.strict:
         system += STRICT_INSTRUCTION + '\nJSON 스키마: ' + json.dumps(schema, ensure_ascii=False, separators=(',', ':'))
@@ -56,12 +79,13 @@ def main():
     env['LLAMA_API_KEY'] = key
     command = [str(executable), '-m', str(ROOT / 'models' / model['artifact']['filename']),
                '--host', '127.0.0.1', '--port', str(port), '-c', '16384', '-np', '1',
-               '-ngl', '0' if args.backend == 'cpu' else '99', '-t', '8',
+               '-ngl', '0' if args.backend == 'cpu' else '99', '-t', str(args.threads),
                '--jinja', '--reasoning', 'off', '--flash-attn', args.flash_attn,
                '-b', str(args.batch_size), '-ub', str(args.ubatch_size)]
     report = {'backend': args.backend, 'runtime_tag': runtime['tag'],
               'model_id': model['model_id'], 'fixture_id': fixture['id'],
-              'context_tokens': 16384, 'threads': 8, 'runs': [], 'prefill_probes': [],
+              'context_tokens': 16384, 'threads': args.threads, 'runs': [], 'prefill_probes': [],
+              'response_format': format_name,
               'strict_contract': args.strict, 'flash_attention_requested': args.flash_attn,
               'evaluator_version': 2, 'reasoning': 'off',
               'batch_size': args.batch_size, 'ubatch_size': args.ubatch_size, 'probe_only': args.probe_only,
@@ -107,8 +131,9 @@ def main():
                                  {'role': 'user', 'content': fixture['transcript']}],
                     'temperature': 0.7, 'top_p': 0.8, 'top_k': 20, 'min_p': 0,
                     'seed': 42, 'max_tokens': 1536, 'cache_prompt': False,
-                    'response_format': {'type': 'json_object', 'schema': schema} if args.strict else {'type': 'json_object'},
                     'reasoning_effort': 'none'}
+                if response_format is not None:
+                    payload['response_format'] = response_format
                 tick = time.perf_counter()
                 template = post('/apply-template', {'messages': payload['messages']})['prompt']
                 input_tokens = len(post('/tokenize', {'content': template, 'add_special': False})['tokens'])
