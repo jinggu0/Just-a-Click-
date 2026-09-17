@@ -1,0 +1,133 @@
+{
+  "backend": "vulkan",
+  "runtime_tag": "b10994",
+  "model_id": "jac-qwen3-8b-baseline-q5km",
+  "fixture_id": "meeting-smoke-v1",
+  "context_tokens": 16384,
+  "threads": 4,
+  "runs": [
+    {
+      "run": 1,
+      "request_to_saved_seconds": 25.863698499975726,
+      "startup_plus_request_seconds": 29.422289700014517,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 1766.927,
+        "prompt_per_token_ms": 1.9081285097192224,
+        "prompt_per_second": 524.0737166843905,
+        "predicted_n": 329,
+        "predicted_ms": 24044.049,
+        "predicted_per_token_ms": 73.30502743902439,
+        "predicted_per_second": 13.641629161544298
+      }
+    },
+    {
+      "run": 2,
+      "request_to_saved_seconds": 25.946970600169152,
+      "startup_plus_request_seconds": null,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 1889.592,
+        "prompt_per_token_ms": 2.040596112311015,
+        "prompt_per_second": 490.05287914004714,
+        "predicted_n": 329,
+        "predicted_ms": 23975.286,
+        "predicted_per_token_ms": 73.09538414634146,
+        "predicted_per_second": 13.680754423534301
+      }
+    },
+    {
+      "run": 3,
+      "request_to_saved_seconds": 26.78597839991562,
+      "startup_plus_request_seconds": null,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 1718.805,
+        "prompt_per_token_ms": 1.8561609071274299,
+        "prompt_per_second": 538.746396478949,
+        "predicted_n": 329,
+        "predicted_ms": 24996.362,
+        "predicted_per_token_ms": 76.20842073170732,
+        "predicted_per_second": 13.12190950027048
+      }
+    }
+  ],
+  "prefill_probes": [],
+  "response_format": "json",
+  "strict_contract": true,
+  "flash_attention_requested": "off",
+  "evaluator_version": 2,
+  "reasoning": "off",
+  "batch_size": 2048,
+  "ubatch_size": 512,
+  "probe_only": false,
+  "scope": "synthetic short transcript; not four-hour or STT validation",
+  "startup_seconds": 3.5585912000387907,
+  "status": "completed"
+}

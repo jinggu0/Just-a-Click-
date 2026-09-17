@@ -1,0 +1,133 @@
+{
+  "backend": "vulkan",
+  "runtime_tag": "b10994",
+  "model_id": "jac-qwen3-8b-baseline-q5km",
+  "fixture_id": "meeting-smoke-v1",
+  "context_tokens": 16384,
+  "threads": 4,
+  "runs": [
+    {
+      "run": 1,
+      "request_to_saved_seconds": 25.118819499854,
+      "startup_plus_request_seconds": 29.213535299757496,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 1818.945,
+        "prompt_per_token_ms": 1.9643034557235421,
+        "prompt_per_second": 509.086311020949,
+        "predicted_n": 329,
+        "predicted_ms": 23261.674,
+        "predicted_per_token_ms": 70.91973780487804,
+        "predicted_per_second": 14.10044694117887
+      }
+    },
+    {
+      "run": 2,
+      "request_to_saved_seconds": 24.901412199949846,
+      "startup_plus_request_seconds": null,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 1876.295,
+        "prompt_per_token_ms": 2.0262365010799135,
+        "prompt_per_second": 493.525804844121,
+        "predicted_n": 329,
+        "predicted_ms": 22982.62,
+        "predicted_per_token_ms": 70.06896341463414,
+        "predicted_per_second": 14.27165397156634
+      }
+    },
+    {
+      "run": 3,
+      "request_to_saved_seconds": 25.848620399832726,
+      "startup_plus_request_seconds": null,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 1890.266,
+        "prompt_per_token_ms": 2.0413239740820734,
+        "prompt_per_second": 489.87814413421177,
+        "predicted_n": 329,
+        "predicted_ms": 23920.813,
+        "predicted_per_token_ms": 72.92930792682927,
+        "predicted_per_second": 13.711908537556814
+      }
+    }
+  ],
+  "prefill_probes": [],
+  "response_format": "schema",
+  "strict_contract": true,
+  "flash_attention_requested": "off",
+  "evaluator_version": 2,
+  "reasoning": "off",
+  "batch_size": 2048,
+  "ubatch_size": 512,
+  "probe_only": false,
+  "scope": "synthetic short transcript; not four-hour or STT validation",
+  "startup_seconds": 4.094715799903497,
+  "status": "completed"
+}

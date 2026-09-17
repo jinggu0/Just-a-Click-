@@ -4,6 +4,7 @@
 - 모델·런타임: Qwen3-8B Q5_K_M, llama.cpp b10994 (CPU·Vulkan)
 - 범위: 합성 토큰의 원시 처리량과 합성 회의 프롬프트의 서버 생성 속도. 실제 강의·STT·앱 지연시간·요약 품질 시험이 아님
 - 실행 계획: [llama-bench 측정 계획](../superpowers/plans/2026-09-17-llama-bench-feasibility.md) Task 5
+- 후속: 아래 선택지 1에 따라 전원 모드를 "최고 성능"으로 바꿔 재측정했다. 판정은 feasible_estimate로 바뀌었다. [재측정 보고서](2026-09-17-llama-bench-best-performance.md)
 - 결과 파일: [처리량 전체](../../evaluation/results/2026-09-17-llama-bench-all.json), [지속 성능 기록](../../evaluation/results/2026-09-17-llama-bench-sustained.json), [제약 비교: none](../../evaluation/results/2026-09-17-constraint-none.json)·[json](../../evaluation/results/2026-09-17-constraint-json.json)·[schema](../../evaluation/results/2026-09-17-constraint-schema.json), [추정](../../evaluation/results/2026-09-17-feasibility.json)
 
 ## 요약
