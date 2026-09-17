@@ -19,7 +19,7 @@
 | --- | --- |
 | 기기 | Samsung 940XHA, Core Ultra 7 258V, Intel Arc 140V (llama-bench 보고: `Intel(R) Arc(TM) 140V GPU (16GB)`) |
 | 전원 | AC 연결, 배터리 100% → 99%, 배터리 절약 꺼짐 |
-| Windows 전원 | 전원 구성 "SAMSUNG MODE"(최소 프로세서 상태 5%, 최대 100%), AC 전원 모드 오버레이 `961cc777-2547-4f9d-8174-7d86181b8a7a`("최고의 전원 효율성"). 설정은 변경하지 않았다 |
+| Windows 전원 | 전원 구성 "SAMSUNG MODE"(최소 프로세서 상태 5%, 최대 100%), AC 전원 모드 오버레이 `961cc777-2547-4f9d-8174-7d86181b8a7a`("최고의 전원 효율성", GUID 의미는 [Eleven Forum 안내](https://www.elevenforum.com/t/change-power-mode-in-windows-11.1442/) 참조). 레지스트리 `ActiveOverlayAcPowerScheme`을 읽기만 했고 설정은 변경하지 않았다 |
 | 배경 부하(시작 직전) | 전체 CPU 약 42%. OneDrive 동기화(두 프로세스 합계 코어 1개 기준 약 87%), Windows Defender 24%, System 21%, 이 에이전트 앱 17%, 검색 색인 12%. VMware `vmware-vmx` 프로세스 실행 중. 여유 메모리 12.5GB/31.5GB. 사용자가 OneDrive 외 앱을 종료 |
 | 온도 | 진단 구간 50~53°C, 열 제한 없음(`% Passive Limit` 100, `Throttle Reasons` 0) |
 | 반복 | 조건별 3회, 중앙값과 범위 기록 |
