@@ -99,7 +99,7 @@ whisper.cpp 다국어 모델을 기준 노트북의 CPU에서 실행해 다음�
 | `scripts/run_stt_bench.py` | 생성 | screen·models·timestamp_check 단계 실행, 조각별 `whisper-cli` 호출, 요약 JSON·표 작성 |
 | `tests/test_bench_env.py` 외 STT 테스트 | 생성·이동 | 기존 전원·프로세스 테스트 이동과 새 모듈 테스트 |
 | `evaluation/fixtures/stt-fleurs-ko-v1.json` | 생성 | 조각 목록·정답·출처 |
-| `evaluation/results/<날짜>-stt-bench.json` | 측정 후 생성 | 요약(로컬 경로 없음) |
+| `evaluation/results/<날짜>-stt-bench-<단계>.json` | 측정 후 생성 | 요약(로컬 경로 없음). 진단 실행은 저장하지 않는다 |
 | `docs/validation/<날짜>-stt-bench.md` | 측정 후 생성 | 측정 보고서 |
 
 요약 JSON에는 조각별 처리 시간·로딩 시간·RTF·오류 수와 정규화 출력 길이를 남긴다. 모델 출력 전문은 `artifacts/`에만 두고, 공개 데이터 정답과의 비교가 필요한 환각 의심 조각은 보고서에 번호만 적는다.
