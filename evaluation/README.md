@@ -26,6 +26,20 @@ python scripts/benchmark_llm.py --backend vulkan --probe-only --flash-attn on --
 - 각 실행은 고유한 `artifacts/smoke-.../` 디렉터리에 서버 로그·모델 원응답·측정 보고서를 저장한다. 결과 디렉터리는 커밋하지 않는다.
 - 로컬 서버는 `127.0.0.1`에만 열고 임의 토큰으로 인증하며 시험 종료·실패 시 종료한다. 로컬 호출에서 프록시 설정을 사용하지 않는다.
 
+## llama-bench 처리량과 시간 목표 추정
+
+```powershell
+python scripts/run_llama_bench.py --stage all
+python scripts/feasibility.py evaluation/results/<날짜>-llama-bench-all.json --server-report evaluation/results/<날짜>-constraint-schema.json --output evaluation/results/<날짜>-feasibility.json --markdown artifacts/<날짜>-feasibility.md
+```
+
+- `run_llama_bench.py`는 고정된 b10994의 `llama-bench`로 합성 토큰의 입력 처리(pp512)와 생성(tg128) 속도를 조건별 3회 측정한다. CPU 4·8스레드와 Vulkan 4·8스레드 × Flash Attention off·on을 깊이 0·2,048에서 비교한 뒤, 가장 빠른 생성 설정으로 깊이 0·2,048·8,192를 ubatch 128·512로 측정한다.
+- ubatch 512의 8,192 깊이는 서버 시험에서 GPU device lost가 났던 조건이므로 실패를 허용하는 위험 시험으로 마지막에 실행한다. 실패해도 드라이버·TDR 설정을 바꾸지 않는다.
+- AC 전원이 아니거나 다른 `llama-*` 프로세스가 실행 중이면 시작하지 않는다. 측정 중에는 이 프로세스만 절전을 막고 시스템 전원 설정은 바꾸지 않는다.
+- 원출력·로그는 `artifacts/llama-bench-*/`, 요약은 `evaluation/results/<날짜>-llama-bench-<단계>.json`에 저장하며 기존 파일을 덮어쓰지 않는다. 요약에는 로컬 경로를 남기지 않는다.
+- 오래 걸리는 측정은 `--stage screen`과 `--stage depth --threads <스레드> --flash-attn <on|off>`로 나눠 실행할 수 있다.
+- `feasibility.py`는 측정 처리량과 결정 0006의 가정(발화 속도, 음절당 토큰, 구간 출력량 등)으로 녹음 종료 후 5분·다시 요약 1시간 목표를 추정한다. 결과는 추정이며 실제 앱 지연시간이나 요약 품질 통과가 아니다. 한국어 표는 인코딩 문제를 피하려고 `--markdown` 파일로만 쓴다.
+
 ## 측정 범위
 
 `meeting-smoke.json`은 프로젝트에서 직접 작성한 합성 회의문이다. 개인정보나 실제 녹음은 포함하지 않는다. 취소된 제안, 담당자·미정 기한, 전사 시간 제외, 미검증 가속, 잡담을 올바르게 처리하는지 수동 검수한다.
