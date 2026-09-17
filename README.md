@@ -6,6 +6,8 @@
 - [제품 요구사항 정의서](docs/PRD.md)
 - [개발 로드맵](docs/ROADMAP.md)
 - [M0 기술 검증 계획](docs/M0-VALIDATION.md)
+- [강의 우선 제품 범위 결정](docs/decisions/0006-lecture-first-product-scope.md)
+- [앱 기술 결정](docs/decisions/0007-app-stack.md)
 - [LLM 모델 선정](docs/decisions/0004-llm-selection.md)
 - [LLM 지역화·개량 계획](docs/LLM-SPECIALIZATION.md)
 - [로컬 LLM 시험 실행 방법](evaluation/README.md)

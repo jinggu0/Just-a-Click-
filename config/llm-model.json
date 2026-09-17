@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "model_id": "jac-qwen3-8b-baseline-q5km",
   "status": "synthetic_smoke_completed_not_release_validated",
   "fine_tuned": false,
@@ -35,11 +35,16 @@
     "min_p": 0
   },
   "release_gate": {
+    "decision": "docs/decisions/0006-lecture-first-product-scope.md",
     "maximum_recording_seconds": 14400,
-    "maximum_summary_seconds": 120,
-    "measurement": "summary_request_after_transcription_to_local_result_saved",
+    "representative_recording_seconds": [7200, 10800],
+    "post_recording_note_target_seconds": 300,
+    "post_recording_measurement": "recording_stopped_to_fast_note_saved_with_live_preprocessing",
+    "library_resummary_target_seconds": 3600,
+    "library_resummary_measurement": "resummary_request_to_new_note_version_saved",
     "quality_passed": false,
-    "latency_passed": false,
+    "post_recording_latency_passed": false,
+    "library_resummary_latency_passed": false,
     "windows_10_passed": false,
     "windows_11_passed": false
   }
