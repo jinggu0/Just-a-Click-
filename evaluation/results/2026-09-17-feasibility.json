@@ -1,0 +1,155 @@
+{
+  "scope": "estimate from raw throughput and assumed workload; not measured app latency",
+  "selected": {
+    "threads": 8,
+    "flash_attn": "on"
+  },
+  "targets": {
+    "post_recording_seconds": 300,
+    "library_resummary_seconds": 3600
+  },
+  "assumptions": {
+    "syllables_per_second": [
+      2.5,
+      4.0
+    ],
+    "tokens_per_syllable": 0.9,
+    "window_seconds": 300,
+    "window_overhead_tokens": 900,
+    "window_output_tokens": 300,
+    "final_input_tokens": 3000,
+    "final_output_tokens": 400,
+    "backlog_windows": 2,
+    "max_live_duty_ratio": 0.5,
+    "lecture_hours": [
+      2,
+      3,
+      4
+    ],
+    "representative_hours": [
+      2,
+      3
+    ],
+    "step_tokens": 64
+  },
+  "tg_factor": 0.9810449562407978,
+  "prompt_curve": {
+    "ubatch": 128,
+    "points": [
+      [
+        0,
+        113.969
+      ],
+      [
+        2048,
+        72.5934
+      ],
+      [
+        8192,
+        33.8444
+      ]
+    ],
+    "extrapolated": false
+  },
+  "generation_curve": [
+    [
+      0,
+      3.9744
+    ],
+    [
+      2048,
+      3.6392
+    ],
+    [
+      8192,
+      2.908695
+    ]
+  ],
+  "scenarios": [
+    {
+      "lecture_hours": 2,
+      "syllables_per_second": 2.5,
+      "window_input_tokens": 1575,
+      "window_seconds": 99.0,
+      "live_duty_ratio": 0.33,
+      "post_recording_seconds": 350.5,
+      "library_resummary_seconds": 2529.2,
+      "live_keeps_up": true,
+      "post_recording_within_target": false,
+      "library_resummary_within_target": true,
+      "required_tg_tps_post": 4.32,
+      "required_tg_tps_resummary": 2.39
+    },
+    {
+      "lecture_hours": 3,
+      "syllables_per_second": 2.5,
+      "window_input_tokens": 1575,
+      "window_seconds": 99.0,
+      "live_duty_ratio": 0.33,
+      "post_recording_seconds": 350.5,
+      "library_resummary_seconds": 3717.6,
+      "live_keeps_up": true,
+      "post_recording_within_target": false,
+      "library_resummary_within_target": false,
+      "required_tg_tps_post": 4.32,
+      "required_tg_tps_resummary": 3.76
+    },
+    {
+      "lecture_hours": 4,
+      "syllables_per_second": 2.5,
+      "window_input_tokens": 1575,
+      "window_seconds": 99.0,
+      "live_duty_ratio": 0.33,
+      "post_recording_seconds": 350.5,
+      "library_resummary_seconds": 4905.9,
+      "live_keeps_up": true,
+      "post_recording_within_target": false,
+      "library_resummary_within_target": false,
+      "required_tg_tps_post": 4.32,
+      "required_tg_tps_resummary": 5.31
+    },
+    {
+      "lecture_hours": 2,
+      "syllables_per_second": 4.0,
+      "window_input_tokens": 1980,
+      "window_seconds": 105.6,
+      "live_duty_ratio": 0.352,
+      "post_recording_seconds": 363.7,
+      "library_resummary_seconds": 2687.9,
+      "live_keeps_up": true,
+      "post_recording_within_target": false,
+      "library_resummary_within_target": true,
+      "required_tg_tps_post": 4.52,
+      "required_tg_tps_resummary": 2.49
+    },
+    {
+      "lecture_hours": 3,
+      "syllables_per_second": 4.0,
+      "window_input_tokens": 1980,
+      "window_seconds": 105.6,
+      "live_duty_ratio": 0.352,
+      "post_recording_seconds": 363.7,
+      "library_resummary_seconds": 3955.6,
+      "live_keeps_up": true,
+      "post_recording_within_target": false,
+      "library_resummary_within_target": false,
+      "required_tg_tps_post": 4.52,
+      "required_tg_tps_resummary": 4.01
+    },
+    {
+      "lecture_hours": 4,
+      "syllables_per_second": 4.0,
+      "window_input_tokens": 1980,
+      "window_seconds": 105.6,
+      "live_duty_ratio": 0.352,
+      "post_recording_seconds": 363.7,
+      "library_resummary_seconds": 5223.4,
+      "live_keeps_up": true,
+      "post_recording_within_target": false,
+      "library_resummary_within_target": false,
+      "required_tg_tps_post": 4.52,
+      "required_tg_tps_resummary": 5.83
+    }
+  ],
+  "verdict": "infeasible_estimate"
+}
