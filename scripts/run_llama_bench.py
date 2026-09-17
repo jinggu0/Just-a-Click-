@@ -1,22 +1,20 @@
 """Run the pinned llama-bench matrix for M0. Raw throughput only; see feasibility.py for estimates."""
 import argparse
-from contextlib import contextmanager
-import csv
-import ctypes
-import io
 import json
 import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
+from bench_env import (competing_processes, hide_paths, keep_awake, power_mode, power_status,
+                       unique_path, utc_now)
 from feasibility import estimate_from_records, render_markdown
 from llama_bench_results import normalize, parse_jsonl, select_best
 
 ROOT = Path(__file__).resolve().parents[1]
-BLOCKING_PROCESSES = {'llama-server.exe', 'llama-bench.exe', 'llama-cli.exe'}
+BLOCKING_PROCESSES = {'llama-server.exe', 'llama-bench.exe', 'llama-cli.exe',
+                      'whisper-cli.exe', 'whisper-server.exe'}
 JOB_TIMEOUT_SECONDS = 3 * 60 * 60
-ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
 
 
 def screen_jobs():
@@ -50,52 +48,10 @@ def command(job, model_path, runtime_root, repetitions):
             '-r', str(repetitions), '-o', 'jsonl', '--progress', *job['args']]
 
 
-def running_llama_processes(tasklist_csv):
-    found = set()
-    for row in csv.reader(io.StringIO(tasklist_csv)):
-        if row and row[0].lower() in BLOCKING_PROCESSES:
-            found.add(row[0].lower())
-    return sorted(found)
-
-
-def describe_power(ac_line, battery_percent, status_flag):
-    return {'ac_power': {0: False, 1: True}.get(ac_line),
-            'battery_percent': None if battery_percent == 255 else battery_percent,
-            'battery_saver': bool(status_flag & 1)}
-
-
-class _PowerStatus(ctypes.Structure):
-    _fields_ = [('ACLineStatus', ctypes.c_ubyte), ('BatteryFlag', ctypes.c_ubyte),
-                ('BatteryLifePercent', ctypes.c_ubyte), ('SystemStatusFlag', ctypes.c_ubyte),
-                ('BatteryLifeTime', ctypes.c_ulong), ('BatteryFullLifeTime', ctypes.c_ulong)]
-
-
-def power_status():
-    status = _PowerStatus()
-    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
-        return {'ac_power': None, 'battery_percent': None, 'battery_saver': None}
-    return describe_power(status.ACLineStatus, status.BatteryLifePercent,
-                          status.SystemStatusFlag)
-
-
-@contextmanager
-def keep_awake():
-    """Block idle sleep while this process runs; system power settings stay unchanged."""
-    kernel32 = ctypes.windll.kernel32
-    kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
-    try:
-        yield
-    finally:
-        kernel32.SetThreadExecutionState(ES_CONTINUOUS)
-
-
 def tail(path, lines=5):
-    """Last log lines with the checkout path hidden, safe to commit in summaries."""
+    """Last log lines with local paths hidden, safe to commit in summaries."""
     text = path.read_text('utf-8', errors='replace') if path.exists() else ''
-    text = '\n'.join(text.splitlines()[-lines:])
-    for local in {str(ROOT), ROOT.as_posix()}:
-        text = text.replace(local, '<repo>')
-    return text
+    return hide_paths('\n'.join(text.splitlines()[-lines:]))
 
 
 def run_job(job, cmd, out_dir, timeout):
@@ -123,14 +79,6 @@ def run_job(job, cmd, out_dir, timeout):
     return result, records
 
 
-def unique_path(path):
-    candidate, index = path, 2
-    while candidate.exists():
-        candidate = path.with_name(f'{path.stem}-{index}{path.suffix}')
-        index += 1
-    return candidate
-
-
 def overall_status(jobs):
     failed = [j for j in jobs if j['status'] != 'completed']
     if not failed:
@@ -138,10 +86,6 @@ def overall_status(jobs):
     if all(j['allow_failure'] for j in failed):
         return 'completed_with_expected_failures'
     return 'failed'
-
-
-def now():
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
 def main():
@@ -164,13 +108,15 @@ def main():
     if not model_path.exists() or model_path.stat().st_size != model['artifact']['size_bytes']:
         raise SystemExit('Model missing or wrong size; run scripts/prepare_llm.py first')
     runtime_root = ROOT / 'runtimes' / runtime['tag']
-    tasks = subprocess.run(['tasklist', '/FO', 'CSV', '/NH'], capture_output=True, text=True,
-                           encoding='oem', errors='replace', check=True).stdout
-    if running := running_llama_processes(tasks):
+    if running := competing_processes(BLOCKING_PROCESSES):
         raise SystemExit(f"Stop other inference processes first: {', '.join(running)}")
     power = power_status()
     if power['ac_power'] is not True and not args.allow_battery:
         raise SystemExit(f'Connect AC power before benchmarking (power: {power})')
+    mode = power_mode()
+    if mode['ac_mode'] != 'best_performance':
+        print(f"Warning: targets are judged in best_performance mode; current: {mode['ac_mode']}",
+              flush=True)
 
     out_dir = ROOT / 'artifacts' / f'llama-bench-{time.time_ns()}'
     out_dir.mkdir(parents=True)
@@ -178,8 +124,9 @@ def main():
                'scope': 'raw llama.cpp throughput on synthetic tokens; not app latency or quality',
                'runtime_tag': runtime['tag'], 'model_id': model['model_id'],
                'model_file': model['artifact']['filename'], 'stage': args.stage,
-               'repetitions': args.repetitions, 'started_at': now(),
-               'power_at_start': power, 'selected': None, 'jobs': [], 'records': []}
+               'repetitions': args.repetitions, 'started_at': utc_now(),
+               'power_at_start': power, 'power_mode_at_start': mode, 'selected': None,
+               'jobs': [], 'records': []}
 
     def save():
         (out_dir / 'summary.json').write_text(
@@ -187,13 +134,13 @@ def main():
 
     def run_all(jobs):
         for job in jobs:
-            print(f"[{now()}] {job['name']} ...", flush=True)
+            print(f"[{utc_now()}] {job['name']} ...", flush=True)
             cmd = command(job, model_path, runtime_root, args.repetitions)
             result, records = run_job(job, cmd, out_dir, JOB_TIMEOUT_SECONDS)
             summary['jobs'].append(result)
             summary['records'].extend(records)
             save()
-            print(f"[{now()}] {job['name']}: {result['status']} ({result['seconds']}s, "
+            print(f"[{utc_now()}] {job['name']}: {result['status']} ({result['seconds']}s, "
                   f"{result['records']} records)", flush=True)
 
     with keep_awake():
@@ -210,7 +157,8 @@ def main():
             except ValueError as error:
                 summary['estimate'] = {'error': str(error)}
     summary['power_at_end'] = power_status()
-    summary['finished_at'] = now()
+    summary['power_mode_at_end'] = power_mode()
+    summary['finished_at'] = utc_now()
     summary['status'] = overall_status(summary['jobs'])
     save()
     stamp = datetime.now().strftime('%Y-%m-%d')

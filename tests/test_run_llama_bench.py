@@ -40,19 +40,8 @@ class JobTests(unittest.TestCase):
         self.assertEqual(Path(cmd[0]), Path('runtimes/b10994/vulkan/llama-bench.exe'))
         self.assertEqual(cmd[1:8], ['-m', 'm.gguf', '-r', '3', '-o', 'jsonl', '--progress'])
 
-
-class EnvironmentTests(unittest.TestCase):
-    def test_detects_competing_inference_process(self):
-        csv_text = ('"System","4","Services","0","132 K"\n'
-                    '"llama-server.exe","1234","Console","1","5,000 K"\n')
-        self.assertEqual(R.running_llama_processes(csv_text), ['llama-server.exe'])
-        self.assertEqual(R.running_llama_processes('"python.exe","1","Console","1","1 K"\n'), [])
-
-    def test_power_description(self):
-        self.assertEqual(R.describe_power(1, 80, 0),
-                         {'ac_power': True, 'battery_percent': 80, 'battery_saver': False})
-        self.assertEqual(R.describe_power(0, 255, 1),
-                         {'ac_power': False, 'battery_percent': None, 'battery_saver': True})
+    def test_competing_speech_processes_also_block(self):
+        self.assertIn('whisper-cli.exe', R.BLOCKING_PROCESSES)
 
     def test_overall_status_distinguishes_expected_failures(self):
         ok = {'status': 'completed', 'allow_failure': False}
@@ -61,18 +50,6 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(R.overall_status([ok]), 'completed')
         self.assertEqual(R.overall_status([ok, risky]), 'completed_with_expected_failures')
         self.assertEqual(R.overall_status([ok, risky, broken]), 'failed')
-
-    def test_keep_awake_restores_normal_sleep(self):
-        with patch.object(R.ctypes.windll.kernel32, 'SetThreadExecutionState') as api:
-            with R.keep_awake():
-                api.assert_called_once_with(0x80000001)
-            api.assert_called_with(0x80000000)
-
-    def test_unique_path_never_overwrites(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'r.json'
-            path.write_text('{}')
-            self.assertEqual(R.unique_path(path).name, 'r-2.json')
 
 
 class RunJobTests(unittest.TestCase):
