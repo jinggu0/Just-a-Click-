@@ -36,6 +36,7 @@
   },
   "release_gate": {
     "decision": "docs/decisions/0006-lecture-first-product-scope.md",
+    "power_condition": "ac_power_windows_best_performance_mode",
     "maximum_recording_seconds": 14400,
     "representative_recording_seconds": [7200, 10800],
     "post_recording_note_target_seconds": 300,
