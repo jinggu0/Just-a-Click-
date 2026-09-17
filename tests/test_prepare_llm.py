@@ -40,6 +40,18 @@ class DownloadTests(unittest.TestCase):
                     MODULE.download_model('https://example.invalid/model', target, 5, '0' * 64)
             self.assertEqual(target.read_bytes(), b'previous')
 
+    def test_interrupted_chunk_resumes_after_cached_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'model.gguf'
+            (Path(directory) / 'model.gguf.parts').mkdir()
+            (Path(directory) / 'model.gguf.parts/0').write_bytes(b'he')
+            digest = hashlib.sha256(b'hello').hexdigest()
+            rest = Response(b'llo', content_range='bytes 2-4/5')
+            with patch.object(MODULE.urllib.request, 'urlopen', return_value=rest) as fetch:
+                MODULE.download_model('https://example.invalid/model', target, 5, digest)
+            self.assertEqual(fetch.call_args.args[0].get_header('Range'), 'bytes=2-4')
+            self.assertEqual(target.read_bytes(), b'hello')
+
     def test_zip_extraction_rejects_escaping_member(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / 'bad.zip'

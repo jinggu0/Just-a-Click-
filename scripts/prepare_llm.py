@@ -53,17 +53,23 @@ def download_model(url, target, size, digest):
         start = index * chunk_size
         end = min(start + chunk_size, size) - 1
         part = parts / str(index)
-        if part.exists() and part.stat().st_size == end - start + 1:
+        have = part.stat().st_size if part.exists() else 0
+        if have > end - start + 1:
+            part.unlink()
+            have = 0
+        if have == end - start + 1:
             return part
-        # Distinct cache keys prevent intermediary caches serializing byte ranges.
-        range_url = url + ('&' if '?' in url else '?') + f'download=true&part={index}'
+        # Resume after the bytes already cached; distinct cache keys per offset prevent
+        # intermediary caches serializing byte ranges.
+        first = start + have
+        range_url = url + ('&' if '?' in url else '?') + f'download=true&part={index}&from={have}'
         request = urllib.request.Request(range_url, headers={
-            'User-Agent': 'Just-a-Click-M0', 'Range': f'bytes={start}-{end}'})
+            'User-Agent': 'Just-a-Click-M0', 'Range': f'bytes={first}-{end}'})
         with urllib.request.urlopen(request, timeout=90) as response:
-            expected = f'bytes {start}-{end}/{size}'
+            expected = f'bytes {first}-{end}/{size}'
             if response.status != 206 or response.headers.get('Content-Range') != expected:
                 raise RuntimeError('Server did not honor exact byte range')
-            with part.open('wb') as output:
+            with part.open('ab') as output:
                 shutil.copyfileobj(response, output, 1024 * 1024)
         if part.stat().st_size != end - start + 1:
             raise RuntimeError('Incomplete range')

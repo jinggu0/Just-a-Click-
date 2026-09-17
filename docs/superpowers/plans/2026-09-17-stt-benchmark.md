@@ -879,6 +879,55 @@ Expected: `Ran 49 tests`, `OK`
 Run: `python scripts/prepare_stt.py` (백그라운드 실행 권장)
 Expected: 이미 받은 파일은 `Verified existing ...`, 나머지는 `Installed and SHA-256 verified ...`로 끝나고 종료 코드 0. 연결이 끊기면 같은 명령을 다시 실행한다. 받은 구간은 재사용된다.
 
+실행 중 발견(2026-09-17): 첫 실행에서 8개 연결이 동시에 끊기고(`Incomplete range`), 재실행에서도 일부 연결이 응답 없이 멈췄다. 기존 도구는 끊긴 구간을 처음부터 다시 받아 진행분을 버리므로, `prepare_llm.download_model`이 구간 파일에 이미 받은 바이트 다음부터 이어 받도록 고쳤다(테스트 `test_interrupted_chunk_resumes_after_cached_bytes` 추가, 전체 81개). 이 수정은 Task 5를 마친 뒤 반영했으므로 Task 3~5의 전체 테스트 수(59·68·80)는 수정 전 기준이고, Task 6에서는 81개다.
+
+`tests/test_prepare_llm.py`의 zip 테스트 앞에 추가한 테스트(수정 전 코드에서는 `Server did not honor exact byte range`로 실패한다):
+
+```python
+    def test_interrupted_chunk_resumes_after_cached_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'model.gguf'
+            (Path(directory) / 'model.gguf.parts').mkdir()
+            (Path(directory) / 'model.gguf.parts/0').write_bytes(b'he')
+            digest = hashlib.sha256(b'hello').hexdigest()
+            rest = Response(b'llo', content_range='bytes 2-4/5')
+            with patch.object(MODULE.urllib.request, 'urlopen', return_value=rest) as fetch:
+                MODULE.download_model('https://example.invalid/model', target, 5, digest)
+            self.assertEqual(fetch.call_args.args[0].get_header('Range'), 'bytes=2-4')
+            self.assertEqual(target.read_bytes(), b'hello')
+```
+
+`scripts/prepare_llm.py`의 `download_model` 안 `fetch` 함수 전체:
+
+```python
+    def fetch(index):
+        start = index * chunk_size
+        end = min(start + chunk_size, size) - 1
+        part = parts / str(index)
+        have = part.stat().st_size if part.exists() else 0
+        if have > end - start + 1:
+            part.unlink()
+            have = 0
+        if have == end - start + 1:
+            return part
+        # Resume after the bytes already cached; distinct cache keys per offset prevent
+        # intermediary caches serializing byte ranges.
+        first = start + have
+        range_url = url + ('&' if '?' in url else '?') + f'download=true&part={index}&from={have}'
+        request = urllib.request.Request(range_url, headers={
+            'User-Agent': 'Just-a-Click-M0', 'Range': f'bytes={first}-{end}'})
+        with urllib.request.urlopen(request, timeout=90) as response:
+            expected = f'bytes {first}-{end}/{size}'
+            if response.status != 206 or response.headers.get('Content-Range') != expected:
+                raise RuntimeError('Server did not honor exact byte range')
+            with part.open('ab') as output:
+                shutil.copyfileobj(response, output, 1024 * 1024)
+        if part.stat().st_size != end - start + 1:
+            raise RuntimeError('Incomplete range')
+        print(f'Model chunk {index + 1} complete', flush=True)
+        return part
+```
+
 Run: `python -c "import json,sys; sys.path.insert(0,'scripts'); from prepare_llm import verify; from pathlib import Path; m=json.load(open('config/stt-models.json',encoding='utf-8')); print(all(verify(Path('models/whisper')/x['filename'], x['size_bytes'], x['sha256']) for x in m['models']))"`
 Expected: `True`
 
@@ -2014,7 +2063,7 @@ git commit -m "feat: add whisper.cpp CPU benchmark runner for FLEURS Korean" -m 
 측정은 약 1.5~2.5시간(추정)이며 그동안 노트북을 쓰지 않아야 한다. 시작 전에 사용자에게 다음을 확인받는다: AC 전원 연결, 전원 모드 "최고 성능", 무거운 앱 종료, OneDrive 종료 허락(종료했다면 측정 후 다시 실행). 전원 모드·드라이버·앱 설정은 사용자가 바꾸며, 측정 도구는 바꾸지 않는다.
 
 Run: `python -m unittest discover -s tests -v`
-Expected: `Ran 80 tests`, `OK`
+Expected: `Ran 81 tests`, `OK`
 
 Run: `python -c "import sys; sys.path.insert(0,'scripts'); import bench_env as E; print(E.power_status(), E.power_mode()['ac_mode'], E.competing_processes({'llama-server.exe','llama-bench.exe','llama-cli.exe','whisper-cli.exe','whisper-server.exe'}))"`
 Expected: `{'ac_power': True, 'battery_percent': <값>, 'battery_saver': False} best_performance []`
@@ -2128,7 +2177,7 @@ timestamp_check 행과 같은 모델의 -nt 결과를 나란히 두고 CER·이�
 - [ ] **Step 6: 검증 후 커밋**
 
 Run: `python -m unittest discover -s tests -v`
-Expected: `Ran 80 tests`, `OK`
+Expected: `Ran 81 tests`, `OK`
 
 다음 검사 스크립트를 `artifacts/check_docs.py`로 저장하고 저장소 최상위에서 실행한다(`python artifacts/check_docs.py`).
 
