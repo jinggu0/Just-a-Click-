@@ -1,0 +1,86 @@
+{
+  "backend": "vulkan",
+  "runtime_tag": "b10994",
+  "model_id": "jac-qwen3-8b-baseline-q5km",
+  "fixture_id": "meeting-smoke-v1",
+  "context_tokens": 16384,
+  "threads": 8,
+  "runs": [
+    {
+      "run": 1,
+      "request_to_saved_seconds": 122.03839300014079,
+      "startup_plus_request_seconds": 140.48063570004888,
+      "finish_reason": "stop",
+      "required_json_fields": true,
+      "reasoning_present": false,
+      "preflight_input_tokens": 926,
+      "contract_errors": [],
+      "fixture_checks": {
+        "jimin_deadline_null": true,
+        "no_invented_deadline": true,
+        "gpu_state_in_open_questions": true,
+        "gpu_state_not_an_action": true,
+        "required_fact_sources": true,
+        "chatter_source_excluded": true
+      },
+      "usage": {
+        "completion_tokens": 329,
+        "prompt_tokens": 926,
+        "total_tokens": 1255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 926,
+        "prompt_ms": 9591.02,
+        "prompt_per_token_ms": 10.357473002159828,
+        "prompt_per_second": 96.548646546457,
+        "predicted_n": 329,
+        "predicted_ms": 112324.657,
+        "predicted_per_token_ms": 342.45322256097563,
+        "predicted_per_second": 2.9201068470656444
+      }
+    }
+  ],
+  "prefill_probes": [
+    {
+      "requested_tokens": 4096,
+      "request_to_saved_seconds": 48.88156590005383,
+      "truncated": false,
+      "token_count_passed": true,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 4096,
+        "prompt_ms": 42836.353,
+        "prompt_per_token_ms": 10.458093994140626,
+        "prompt_per_second": 95.61971813987059,
+        "predicted_n": 1,
+        "predicted_ms": 0.001,
+        "predicted_per_token_ms": 0.0,
+        "predicted_per_second": 0.0
+      },
+      "scope": "input throughput only; one generated token"
+    }
+  ],
+  "strict_contract": true,
+  "flash_attention_requested": "on",
+  "evaluator_version": 2,
+  "reasoning": "off",
+  "scope": "synthetic short transcript; not four-hour or STT validation",
+  "startup_seconds": 18.442242699908093,
+  "status": "failed",
+  "error": "HTTP Error 500: Internal Server Error",
+  "reviewed_outputs": [
+    {
+      "run": 1,
+      "content": "{\n  \"schema_version\": \"meeting-summary-v1\",\n  \"title\": \"딸깍 앱 로컬 저장 방식 결정 회의\",\n  \"decisions\": [\n    {\n      \"content\": \"서버 업로드 제안은 취소합니다. 원본 녹음과 전사문은 사용자 PC에만 저장하기로 확정했습니다.\",\n      \"source_refs\": [\"s2\"]\n    }\n  ],\n  \"actions\": [\n    {\n      \"content\": \"지민이 설치 관리자 다운로드 재시도 기능을 맡습니다.\",\n      \"owner\": \"지민\",\n      \"deadline\": null,\n      \"source_refs\": [\"s3\"]\n    },\n    {\n      \"content\": \"모델 파일은 다운로드 후 SHA-256을 확인해야 합니다. 해시가 다르면 설치 완료로 처리하면 안 됩니다.\",\n      \"owner\": null,\n      \"deadline\": null,\n      \"source_refs\": [\"s4\"]\n    },\n    {\n      \"content\": \"요약 실행부터 저장까지 2분이 목표입니다. 음성 전사 시간은 이 2분에 포함하지 않습니다.\",\n      \"owner\": null,\n      \"deadline\": null,\n      \"source_refs\": [\"s5\"]\n    }\n  ],\n  \"open_questions\": [\n    {\n      \"content\": \"GPU 가속은 아직 측정하지 않았습니다. 빨라졌다고 발표하면 안 됩니다.\",\n      \"source_refs\": [\"s6\"]\n    }\n  ]\n}"
+    }
+  ],
+  "failure_context_from_server_log": {
+    "requested_probe_tokens": 8192,
+    "message": "Vulkan0 device lost; vk::Device::getFenceStatus: ErrorDeviceLost",
+    "scope": "not a completed prefill measurement"
+  }
+}

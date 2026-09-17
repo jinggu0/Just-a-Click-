@@ -1,6 +1,7 @@
 # M0 로컬 AI 기술 검증 계획
 
 - 상태: 모델 무결성 확인과 CPU·Vulkan 합성 회의문 각 3회 실행 완료. STT·장문·출시 품질 검증은 미완료
+- 후속 진단: [엄격한 회의 계약·입력 처리 결과](validation/2026-09-17-contract-prefill.md). 4,096토큰 처리와 작은 배치 8,192토큰 처리를 확인했지만 실제 장문 요약의 완료를 의미하지 않는다.
 - 기준 기기: [환경 기록](decisions/0001-target-environment.md)
 - 기준 LLM: [Qwen3-8B Q5_K_M 선정 기록](decisions/0004-llm-selection.md). STT는 [기존 후보 기록](decisions/0002-runtime-candidates.md) 참조
 

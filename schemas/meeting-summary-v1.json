@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "title", "decisions", "actions", "open_questions"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "meeting-summary-v1"},
+    "title": {"type": "string", "minLength": 1},
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["content", "source_refs"],
+        "properties": {
+          "content": {"type": "string", "minLength": 1},
+          "source_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["content", "owner", "deadline", "source_refs"],
+        "properties": {
+          "content": {"type": "string", "minLength": 1},
+          "owner": {"type": ["string", "null"], "minLength": 1},
+          "deadline": {"type": ["string", "null"], "minLength": 1},
+          "source_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["content", "source_refs"],
+        "properties": {
+          "content": {"type": "string", "minLength": 1},
+          "source_refs": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "backend": "vulkan",
+  "runtime_tag": "b10994",
+  "model_id": "jac-qwen3-8b-baseline-q5km",
+  "fixture_id": "meeting-smoke-v1",
+  "context_tokens": 16384,
+  "threads": 8,
+  "runs": [],
+  "prefill_probes": [
+    {
+      "requested_tokens": 8192,
+      "status": "completed",
+      "scope": "input throughput only; one generated token",
+      "request_to_saved_seconds": 185.66257139993832,
+      "truncated": false,
+      "token_count_passed": true,
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 8192,
+        "prompt_ms": 185606.584,
+        "prompt_per_token_ms": 22.6570537109375,
+        "prompt_per_second": 44.13636533497109,
+        "predicted_n": 1,
+        "predicted_ms": 0.001,
+        "predicted_per_token_ms": 0.0,
+        "predicted_per_second": 0.0
+      }
+    }
+  ],
+  "strict_contract": true,
+  "flash_attention_requested": "on",
+  "evaluator_version": 2,
+  "reasoning": "off",
+  "batch_size": 512,
+  "ubatch_size": 128,
+  "probe_only": true,
+  "scope": "synthetic short transcript; not four-hour or STT validation",
+  "startup_seconds": 13.787382999900728,
+  "status": "completed"
+}
