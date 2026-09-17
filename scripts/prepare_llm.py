@@ -87,6 +87,16 @@ def download_model(url, target, size, digest):
     print(f'Installed and SHA-256 verified {target.name}', flush=True)
 
 
+def safe_extract_zip(archive, destination):
+    """Extract only when every member stays inside the destination directory."""
+    destination.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as zipped:
+        for member in zipped.infolist():
+            if not (destination / member.filename).resolve().is_relative_to(destination.resolve()):
+                raise RuntimeError('Unsafe archive path')
+        zipped.extractall(destination)
+
+
 def main():
     model = json.loads((ROOT / 'config/llm-model.json').read_text('utf-8'))['artifact']
     runtime = json.loads((ROOT / 'config/llama-runtime.json').read_text('utf-8'))
@@ -94,13 +104,7 @@ def main():
         archive = ROOT / 'downloads' / asset['filename']
         url = f"https://github.com/ggml-org/llama.cpp/releases/download/{runtime['tag']}/{asset['filename']}"
         download(url, archive, asset['size_bytes'], asset['sha256'])
-        destination = ROOT / 'runtimes' / runtime['tag'] / asset['backend']
-        destination.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(archive) as zipped:
-            for member in zipped.infolist():
-                if not (destination / member.filename).resolve().is_relative_to(destination.resolve()):
-                    raise RuntimeError('Unsafe archive path')
-            zipped.extractall(destination)
+        safe_extract_zip(archive, ROOT / 'runtimes' / runtime['tag'] / asset['backend'])
     download_model(model['url'], ROOT / 'models' / model['filename'], model['size_bytes'], model['sha256'])
     download(model['license_url'], ROOT / 'models' / 'LICENSE-Qwen3-8B')
 

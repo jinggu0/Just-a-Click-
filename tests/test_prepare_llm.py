@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
 SPEC = importlib.util.spec_from_file_location(
     'prepare_llm', Path(__file__).resolve().parents[1] / 'scripts/prepare_llm.py')
@@ -38,6 +39,23 @@ class DownloadTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'SHA-256 mismatch'):
                     MODULE.download_model('https://example.invalid/model', target, 5, '0' * 64)
             self.assertEqual(target.read_bytes(), b'previous')
+
+    def test_zip_extraction_rejects_escaping_member(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'bad.zip'
+            with zipfile.ZipFile(archive, 'w') as zipped:
+                zipped.writestr('../escape.txt', 'x')
+            with self.assertRaisesRegex(RuntimeError, 'Unsafe archive path'):
+                MODULE.safe_extract_zip(archive, Path(directory) / 'out')
+            self.assertFalse((Path(directory) / 'escape.txt').exists())
+
+    def test_zip_extraction_keeps_member_layout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / 'ok.zip'
+            with zipfile.ZipFile(archive, 'w') as zipped:
+                zipped.writestr('Release/tool.exe', 'bin')
+            MODULE.safe_extract_zip(archive, Path(directory) / 'out')
+            self.assertEqual((Path(directory) / 'out/Release/tool.exe').read_text(), 'bin')
 
     def test_ignored_range_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

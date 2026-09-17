@@ -1,0 +1,22 @@
+{
+  "engine": "whisper.cpp",
+  "tag": "b5130",
+  "commit": "927cfce34f31707e17f2bff35c349632fb9e2c3a",
+  "release_url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5130",
+  "license": "MIT",
+  "notes": "Official Windows x64 builds only; no Vulkan build is published. The blas build bundles libopenblas.dll, whose license must be confirmed before redistribution.",
+  "assets": [
+    {
+      "build": "cpu",
+      "filename": "whisper-bin-x64.zip",
+      "size_bytes": 8573270,
+      "sha256": "f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c"
+    },
+    {
+      "build": "blas",
+      "filename": "whisper-blas-bin-x64.zip",
+      "size_bytes": 21360234,
+      "sha256": "55c06d09e8b9b6cfb2b0b47ddedc71803054f0e48be1f41848b3141c06c703a9"
+    }
+  ]
+}
