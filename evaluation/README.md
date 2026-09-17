@@ -42,6 +42,21 @@ python scripts/feasibility.py evaluation/results/<날짜>-llama-bench-all.json -
 
 `benchmark_llm.py --response-format`은 같은 엄격한 프롬프트에서 서버 출력 제약만 바꾸는 진단 옵션이다. `schema`(strict 기본 동작), `json`, `none`의 생성 속도를 비교해 속도 저하가 문법 제약 때문인지 확인한다. `none`은 출력이 계약 검증에 실패할 수 있으며, 이때의 종료 코드 1은 예상된 결과다. `--threads`는 서버 CPU 스레드 수를 바꾼다. 보고서의 `response_format`과 `threads`에 실행 조건이 남는다.
 
+## 로컬 STT 측정
+
+```powershell
+python scripts/prepare_stt.py
+python scripts/stt_data.py
+python scripts/run_stt_bench.py --stage all
+```
+
+- `prepare_stt.py`는 whisper.cpp `b5130`의 Windows x64 CPU·OpenBLAS 빌드, Whisper 모델 6종(약 7.1GB), FLEURS 한국어 test를 받아 크기·SHA-256을 검증한다. 큰 파일은 재개 가능한 구간 다운로드를 쓴다.
+- `stt_data.py`는 FLEURS 문장을 이어 붙인 30초 이하 조각 60개(약 23분)를 `artifacts/stt-chunks/`에 만들고, 조각 목록·정답·출처를 `evaluation/fixtures/stt-fleurs-ko-v1.json`에 쓴다. 낭독 음성이며 강의 녹음이 아니다.
+- `run_stt_bench.py`는 조각마다 `whisper-cli`를 네트워크 없이 실행한다. 실행 설정 선정(CPU·OpenBLAS × 4·8스레드, 조각 10개), 모델 비교(6종, `-nt`), CER 상위 2개 모델의 타임스탬프 비교 순서로 진행한다. RTF는 모델 로딩을 뺀 처리 시간 ÷ 조각 길이다.
+- AC 전원이 아니거나 다른 llama·whisper 프로세스가 실행 중이면 시작하지 않는다. 시간 목표 판정은 전원 모드 "최고 성능"에서 한다.
+- `--models`나 `--chunks`를 쓴 실행은 진단용이며 결과를 `artifacts/`에만 남긴다. 전체 실행 결과는 `evaluation/results/<날짜>-stt-bench-<단계>.json`에 저장하고, 모델 출력 전문은 커밋하지 않는다.
+- 이 측정은 CPU 실시간 가능성과 모델 간 상대 비교를 추정할 뿐이며, 강의 음성·전공 용어·STT와 LLM 동시 실행 품질을 검증하지 않는다.
+
 ## 측정 범위
 
 `meeting-smoke.json`은 프로젝트에서 직접 작성한 합성 회의문이다. 개인정보나 실제 녹음은 포함하지 않는다. 취소된 제안, 담당자·미정 기한, 전사 시간 제외, 미검증 가속, 잡담을 올바르게 처리하는지 수동 검수한다.
