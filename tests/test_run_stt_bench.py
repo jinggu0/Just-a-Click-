@@ -36,6 +36,14 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(S.cli_command(*args)[1:], base + ['-nt'])
         self.assertEqual(S.cli_command(*args, timestamps=True)[1:], base)
 
+    def test_run_folder_keeps_stages_apart(self):
+        out = Path('out')
+        screen = S.run_folder(out, 'screen', 'turbo', 'blas', 8, False)
+        self.assertEqual(screen, out / 'screen-turbo-blas-t8-nt')
+        self.assertNotEqual(screen, S.run_folder(out, 'models', 'turbo', 'blas', 8, False))
+        self.assertNotEqual(S.run_folder(out, 'timestamp_check', 'turbo', 'blas', 8, True),
+                            S.run_folder(out, 'timestamp_check', 'turbo', 'blas', 8, False))
+
     def test_transcript_text_joins_segments(self):
         result = {'transcription': [{'text': ' 다리 밑'}, {'text': ' 간격 '}]}
         self.assertEqual(S.transcript_text(result), '다리 밑 간격')

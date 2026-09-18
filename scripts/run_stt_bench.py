@@ -39,6 +39,11 @@ def cli_command(executable, model_path, wav_path, threads, output_prefix, timest
     return command if timestamps else command + ['-nt']
 
 
+def run_folder(out_dir, stage, model_id, build, threads, timestamps):
+    """Raw output folder per stage: the screening model repeats in the model comparison."""
+    return out_dir / f"{stage}-{model_id}-{build}-t{threads}-{'ts' if timestamps else 'nt'}"
+
+
 def transcript_text(result):
     return ''.join(segment['text'] for segment in result['transcription']).strip()
 
@@ -224,12 +229,12 @@ def main():
         (out_dir / 'summary.json').write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), 'utf-8')
 
-    def run_set(entries, build, threads, model_id, chunk_list, timestamps=False):
+    def run_set(stage, build, threads, model_id, chunk_list, timestamps=False):
         entry = {'model': model_id, 'build': build, 'threads': threads,
                  'timestamps': timestamps, 'decoding': None, 'records': []}
-        entries.append(entry)
+        summary[stage].append(entry)
         label = f"{model_id} {build} t{threads} {'ts' if timestamps else 'nt'}"
-        folder = out_dir / label.replace(' ', '-')
+        folder = run_folder(out_dir, stage, model_id, build, threads, timestamps)
         folder.mkdir()
         executable = runtime_root / build / 'Release/whisper-cli.exe'
         model_path = ROOT / 'models/whisper' / by_id[model_id]['filename']
@@ -252,7 +257,7 @@ def main():
     with keep_awake():
         if screening:
             for config in screen_configs():
-                run_set(summary['screen'], config['build'], config['threads'],
+                run_set('screen', config['build'], config['threads'],
                         models['screen_model'], chunks[:SCREEN_CHUNKS])
             try:
                 summary['selected_config'] = select_config(summary['screen'])
@@ -264,10 +269,10 @@ def main():
         if comparing and status == 'completed':
             config = summary['selected_config']
             for model_id in model_ids:
-                run_set(summary['models'], config['build'], config['threads'], model_id, chunks)
+                run_set('models', config['build'], config['threads'], model_id, chunks)
             summary['selected_model'] = select_model(summary['models'])
             for model_id in top_models(summary['models']):
-                run_set(summary['timestamp_check'], config['build'], config['threads'], model_id,
+                run_set('timestamp_check', config['build'], config['threads'], model_id,
                         chunks, timestamps=True)
     summary.update(status=status, finished_at=utc_now(), power_at_end=power_status(),
                    power_mode_at_end=power_mode())

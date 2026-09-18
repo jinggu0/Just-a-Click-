@@ -2083,6 +2083,16 @@ if ($onedrive) { $onedrive.Path | Out-File -Encoding utf8 artifacts\onedrive-pat
 - 덮개를 열어 두고 측정 중 절전으로 전환하지 않는다.
 - 측정 후 `artifacts/stt-counters-*.csv`의 시각 간격을 확인해 60초를 넘는 공백이 있으면 중단된 구간으로 보고 보고서에 적는다. 조각 기록의 `wall_seconds`가 처리 시간보다 크게 길면 같은 원인이다.
 
+실행 중 발견(2026-09-18): 실행 설정 선정에 쓰는 모델이 모델 비교에도 포함되므로, 선정된 설정이 선정 단계의 설정과 같으면 원출력 폴더 이름이 겹쳐 `FileExistsError`로 중단됐다(large-v3-turbo-q5_0 blas t8). 폴더 이름에 단계를 넣는 `run_folder()`를 추가하고 `run_set`이 이를 쓰도록 고쳤다(테스트 `test_run_folder_keeps_stages_apart` 추가, 전체 82개).
+
+```python
+def run_folder(out_dir, stage, model_id, build, threads, timestamps):
+    """Raw output folder per stage: the screening model repeats in the model comparison."""
+    return out_dir / f"{stage}-{model_id}-{build}-t{threads}-{'ts' if timestamps else 'nt'}"
+```
+
+`run_set`은 `entries` 대신 `stage`를 받아 `summary[stage]`에 기록하고, 폴더를 `run_folder(out_dir, stage, model_id, build, threads, timestamps)`로 만든다. 호출부 3곳도 `run_set('screen', ...)`, `run_set('models', ...)`, `run_set('timestamp_check', ...)`로 바꾼다.
+
 시작 직전 CPU를 많이 쓰는 프로세스를 기록한다.
 
 ```powershell
