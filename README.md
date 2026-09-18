@@ -15,5 +15,6 @@
 - [회의 스키마·긴 입력 처리 진단](docs/validation/2026-09-17-contract-prefill.md)
 - [llama-bench 처리량과 시간 목표 1차 판정](docs/validation/2026-09-17-llama-bench.md)
 - [llama-bench 재측정: 최고 성능 전원 모드](docs/validation/2026-09-17-llama-bench-best-performance.md)
+- [로컬 STT 측정: whisper.cpp CPU와 FLEURS 한국어](docs/validation/2026-09-18-stt-bench.md)
 - [에이전트 작업 지침](AGENTS.md)
 - [Claude 작업 지침](CLAUDE.md)
