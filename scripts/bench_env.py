@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED = 0x80000000, 0x00000001, 0x00000002
 OVERLAY_KEY = r'SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes'
 POWER_MODES = {'961cc777-2547-4f9d-8174-7d86181b8a7a': 'best_power_efficiency',
                'ded574b5-45a0-4f42-8737-46345c09c238': 'best_performance'}
@@ -78,9 +78,13 @@ def power_mode():
 
 @contextmanager
 def keep_awake():
-    """Block idle sleep while this process runs; system power settings stay unchanged."""
+    """Block idle sleep and display-off while this process runs; power settings stay unchanged.
+
+    Modern Standby suspends the machine once the display turns off, which stopped a long
+    benchmark mid-run, so the display request is part of staying awake.
+    """
     kernel32 = ctypes.windll.kernel32
-    kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+    kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
     try:
         yield
     finally:

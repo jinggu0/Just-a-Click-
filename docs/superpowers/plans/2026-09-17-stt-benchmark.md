@@ -2077,6 +2077,12 @@ if ($onedrive) { $onedrive.Path | Out-File -Encoding utf8 artifacts\onedrive-pat
 
 30초 뒤에도 `Get-Process OneDrive`가 남아 있으면 사용자에게 알리고 허락을 받은 뒤 `Stop-Process -Name OneDrive`로 종료한다.
 
+실행 중 발견(2026-09-18): 첫 실측이 대기 모드(Modern Standby)로 4회 중단되어 18시간 넘게 멈췄고, 깨어난 뒤 조각 2개가 시간 초과로 기록됐다. `bench_env.keep_awake`가 절전 방지와 함께 화면 유지(`ES_DISPLAY_REQUIRED`)도 요청하도록 고쳤다(테스트 `test_keep_awake_blocks_sleep_and_display_off`). 그래도 덮개를 닫거나 사용자가 절전으로 전환하면 멈추므로, 측정 전에 다음을 사용자에게 확인한다.
+
+- 설정 → 시스템 → 전원 및 배터리 → 화면·절전 모드에서 전원 연결 시 절전 전환을 "안 함"으로 둔다(전원 설정은 사용자가 바꾼다).
+- 덮개를 열어 두고 측정 중 절전으로 전환하지 않는다.
+- 측정 후 `artifacts/stt-counters-*.csv`의 시각 간격을 확인해 60초를 넘는 공백이 있으면 중단된 구간으로 보고 보고서에 적는다. 조각 기록의 `wall_seconds`가 처리 시간보다 크게 길면 같은 원인이다.
+
 시작 직전 CPU를 많이 쓰는 프로세스를 기록한다.
 
 ```powershell

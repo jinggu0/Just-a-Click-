@@ -33,10 +33,10 @@ class EnvironmentTests(unittest.TestCase):
         other = E.describe_power_mode('00000000-0000-0000-0000-000000000000', None)
         self.assertEqual((other['ac_mode'], other['dc_mode']), ('unknown', None))
 
-    def test_keep_awake_restores_normal_sleep(self):
+    def test_keep_awake_blocks_sleep_and_display_off(self):
         with patch.object(E.ctypes.windll.kernel32, 'SetThreadExecutionState') as api:
             with E.keep_awake():
-                api.assert_called_once_with(0x80000001)
+                api.assert_called_once_with(0x80000003)
             api.assert_called_with(0x80000000)
 
     def test_hide_paths_masks_checkout_and_home(self):
