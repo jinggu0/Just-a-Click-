@@ -49,38 +49,59 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(S.transcript_text(result), '다리 밑 간격')
 
 
+class FakeProcess:
+    """Stands in for Popen: communicate() returns stderr or times out once."""
+
+    def __init__(self, returncode=0, stderr='', timeout=False):
+        self.returncode, self.stderr, self.timeout = returncode, stderr, timeout
+        self._handle, self.killed = 7, False
+
+    def communicate(self, timeout=None):
+        if self.timeout and not self.killed:
+            raise subprocess.TimeoutExpired(['x'], timeout or 1)
+        return '', self.stderr
+
+    def kill(self):
+        self.killed = True
+
+
 class RunChunkTests(unittest.TestCase):
-    def test_completed_chunk_measures_processing_without_load(self):
+    def chunk_result(self, process, prefix):
+        with patch.object(S.subprocess, 'Popen', return_value=process), \
+                patch.object(S, 'process_memory', return_value={
+                    'working_set_mib': 1.0, 'peak_working_set_mib': 600.0,
+                    'private_mib': 2.0, 'peak_private_mib': 512.0}):
+            return S.run_chunk(['x'], prefix, CHUNK)
+
+    def test_completed_chunk_measures_processing_and_memory(self):
         with tempfile.TemporaryDirectory() as directory:
             prefix = Path(directory) / 'fleurs-ko-001'
             Path(f'{prefix}.json').write_text(
                 json.dumps({'transcription': [{'text': ' 다리미 간격'}]}), 'utf-8')
-            done = subprocess.CompletedProcess(['x'], 0, stdout='', stderr=STDERR)
-            with patch.object(S.subprocess, 'run', return_value=done):
-                result = S.run_chunk(['x'], prefix, CHUNK)
+            result = self.chunk_result(FakeProcess(stderr=STDERR), prefix)
         self.assertEqual(result['status'], 'completed')
         self.assertEqual((result['load_seconds'], result['processing_seconds']), (0.5, 6.0))
         self.assertEqual(result['rtf'], 0.3)
         self.assertEqual((result['errors'], result['ref_chars'], result['fallbacks']), (1, 5, 1))
         self.assertEqual(result['decoding']['beams'], 5)
+        self.assertEqual((result['peak_private_mib'], result['peak_working_set_mib']), (512.0, 600.0))
         self.assertFalse(result['anomaly_suspect'])
 
     def test_failed_exit_hides_paths(self):
-        done = subprocess.CompletedProcess(['x'], 3, stdout='', stderr=f'error in {S.ROOT}\\m.bin')
-        with patch.object(S.subprocess, 'run', return_value=done):
-            result = S.run_chunk(['x'], Path('missing'), CHUNK)
+        process = FakeProcess(returncode=3, stderr=f'error in {S.ROOT}\\m.bin')
+        result = self.chunk_result(process, Path('missing'))
         self.assertEqual((result['status'], result['returncode']), ('failed', 3))
         self.assertIn('<repo>\\m.bin', result['error'])
         self.assertNotIn(str(S.ROOT), result['error'])
 
     def test_missing_output_or_timeout(self):
-        done = subprocess.CompletedProcess(['x'], 0, stdout='', stderr=STDERR)
-        with tempfile.TemporaryDirectory() as directory, \
-                patch.object(S.subprocess, 'run', return_value=done):
-            result = S.run_chunk(['x'], Path(directory) / 'none', CHUNK)
+        with tempfile.TemporaryDirectory() as directory:
+            result = self.chunk_result(FakeProcess(stderr=STDERR), Path(directory) / 'none')
         self.assertEqual(result['status'], 'failed')
-        with patch.object(S.subprocess, 'run', side_effect=subprocess.TimeoutExpired(['x'], 1)):
-            self.assertEqual(S.run_chunk(['x'], Path('p'), CHUNK)['status'], 'timeout')
+        process = FakeProcess(timeout=True)
+        timed_out = self.chunk_result(process, Path('p'))
+        self.assertEqual((timed_out['status'], timed_out['peak_private_mib']), ('timeout', 512.0))
+        self.assertTrue(process.killed)
 
 
 class SummaryTests(unittest.TestCase):

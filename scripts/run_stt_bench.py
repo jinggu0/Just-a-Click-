@@ -8,7 +8,7 @@ import subprocess
 import time
 
 from bench_env import (competing_processes, hide_paths, keep_awake, power_mode, power_status,
-                       unique_path, utc_now)
+                       process_memory, unique_path, utc_now)
 from prepare_llm import verify
 from stt_data import FIXTURE_ID, chunk_dir, verify_chunks
 from stt_metrics import (char_errors, error_rate, parse_timings, percentile,
@@ -48,25 +48,35 @@ def transcript_text(result):
     return ''.join(segment['text'] for segment in result['transcription']).strip()
 
 
+def peak_memory(process):
+    """Peak memory of the finished process; empty when the handle cannot be read."""
+    handle = getattr(process, '_handle', None)  # Popen keeps the Windows handle open until closed.
+    memory = (process_memory(handle) or {}) if handle else {}
+    return {key: memory[key] for key in ('peak_working_set_mib', 'peak_private_mib') if key in memory}
+
+
 def run_chunk(cmd, output_prefix, chunk, timeout=CHUNK_TIMEOUT_SECONDS):
     started = time.perf_counter()
     record = {'chunk_id': chunk['chunk_id'], 'seconds': chunk['seconds']}
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               encoding='utf-8', errors='replace',
+                               creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     try:
-        done = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
-                              errors='replace', timeout=timeout,
-                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        stderr = process.communicate(timeout=timeout)[1]
     except subprocess.TimeoutExpired:
-        return dict(record, status='timeout',
-                    wall_seconds=round(time.perf_counter() - started, 2))
-    record.update(returncode=done.returncode,
-                  wall_seconds=round(time.perf_counter() - started, 2))
+        process.kill()
+        process.communicate()
+        return dict(record, status='timeout', wall_seconds=round(time.perf_counter() - started, 2),
+                    **peak_memory(process))
+    record.update(returncode=process.returncode,
+                  wall_seconds=round(time.perf_counter() - started, 2), **peak_memory(process))
     try:
-        if done.returncode != 0:
-            raise RuntimeError(f'whisper-cli exited with {done.returncode}')
-        timings = parse_timings(done.stderr)
+        if process.returncode != 0:
+            raise RuntimeError(f'whisper-cli exited with {process.returncode}')
+        timings = parse_timings(stderr)
         text = transcript_text(json.loads(Path(f'{output_prefix}.json').read_text('utf-8')))
     except (RuntimeError, ValueError, KeyError, OSError) as error:
-        tail = '\n'.join(done.stderr.splitlines()[-3:])
+        tail = '\n'.join(stderr.splitlines()[-3:])
         return dict(record, status='failed', error=hide_paths(f'{error}\n{tail}'.strip()))
     processing = (timings['total_ms'] - timings['load_ms']) / 1000
     errors = char_errors(chunk['reference'], text)
