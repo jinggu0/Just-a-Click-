@@ -1613,7 +1613,7 @@ Logs: ...\artifacts\concurrency-...
 
 `artifacts/concurrency-*/summary.json`에서 다음을 확인한다.
 - `runs[0].records.chunks`에 `lag_seconds`·`queued_seconds`·`peak_private_mib`가 있고 전사문(`transcript`)은 없다.
-- `runs[0].records.windows`의 첫 창이 `partial: false`이고 `input_tokens`가 1,000 이상이다.
+- `runs[0].records.windows`의 창에 `input_tokens`와 `generated_tokens`(300)가 있다. 5분 실행은 음성이 300초에 못 미쳐 창 1개가 `partial: true`로 끝난다.
 - `runs[0].llm_memory`에 `private_mib`와 `gpu_shared_mib`가 있다.
 - `counters.csv`에 5초 간격 기록이 쌓였다.
 

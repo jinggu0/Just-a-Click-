@@ -57,6 +57,21 @@ python scripts/run_stt_bench.py --stage all
 - `--models`나 `--chunks`를 쓴 실행은 진단용이며 결과를 `artifacts/`에만 남긴다. 전체 실행 결과는 `evaluation/results/<날짜>-stt-bench-<단계>.json`에 저장하고, 모델 출력 전문은 커밋하지 않는다.
 - 이 측정은 CPU 실시간 가능성과 모델 간 상대 비교를 추정할 뿐이며, 강의 음성·전공 용어·STT와 LLM 동시 실행 품질을 검증하지 않는다.
 
+## 녹음 중 STT·LLM 동시 실행 측정
+
+```powershell
+python scripts/run_concurrency.py --stage probe
+python scripts/run_concurrency.py --stage screen
+python scripts/run_concurrency.py --stage run --stt-threads 8 --llm-threads 2 --minutes 120
+```
+
+- `run_concurrency.py`는 FLEURS 조각을 녹음 속도로 도착시키고, 전사와 5분 창 구간 초안을 동시에 실행한다. 전사는 whisper.cpp large-v3-turbo f16(OpenBLAS), 초안은 llama-server(Vulkan)로 만든다.
+- `probe`는 컨텍스트 4,096·8,192·16,384의 서버 메모리와 STT 조각 1개의 최대 메모리를 잰다. `screen`은 스레드 배분 3가지를 10분씩 비교한다. `run`은 고른 배분으로 길게 측정한다.
+- 판정 기준은 전사 지연 95번째 백분위 30초·최대 60초, 구간 초안 최대 150초, 녹음 종료 후 5분 재추정 300초, 16GB 메모리 예산이다. 판정은 AC 전원·"최고 성능"에서만 한다.
+- 참고 측정은 `--allow-battery`로 배터리 조건에서 실행한다. 배터리 잔량이 30% 이하가 되면 새 조각 도착을 멈추고 정상 종료한다.
+- 결과는 `evaluation/results/<날짜>-concurrency-<단계>-<조건>.json`에 저장하고, 원출력·서버 로그·카운터 CSV는 `artifacts/`에만 둔다. `--diagnostic`을 쓴 실행은 저장하지 않는다.
+- 이 측정은 낭독 음성을 녹음처럼 흘려보낸 추정이며, 실제 강의 녹음·요약 품질·앱 지연시간을 검증하지 않는다.
+
 ## 측정 범위
 
 `meeting-smoke.json`은 프로젝트에서 직접 작성한 합성 회의문이다. 개인정보나 실제 녹음은 포함하지 않는다. 취소된 제안, 담당자·미정 기한, 전사 시간 제외, 미검증 가속, 잡담을 올바르게 처리하는지 수동 검수한다.
