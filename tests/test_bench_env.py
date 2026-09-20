@@ -39,6 +39,19 @@ class EnvironmentTests(unittest.TestCase):
                 api.assert_called_once_with(0x80000003)
             api.assert_called_with(0x80000000)
 
+    def test_describe_memory_reports_mebibytes(self):
+        class Counters:
+            WorkingSetSize, PeakWorkingSetSize = 100 * 1024 * 1024, 150 * 1024 * 1024
+            PagefileUsage, PeakPagefileUsage = 200 * 1024 * 1024, 250 * 1024 * 1024
+        self.assertEqual(E.describe_memory(Counters()),
+                         {'working_set_mib': 100.0, 'peak_working_set_mib': 150.0,
+                          'private_mib': 200.0, 'peak_private_mib': 250.0})
+
+    def test_process_memory_reads_this_process(self):
+        memory = E.process_memory(E.ctypes.windll.kernel32.GetCurrentProcess())
+        self.assertGreater(memory['private_mib'], 0)
+        self.assertGreaterEqual(memory['peak_working_set_mib'], memory['working_set_mib'])
+
     def test_hide_paths_masks_checkout_and_home(self):
         text = f'{E.ROOT}\\models\\a.bin {Path.home().as_posix()}/x.wav'
         self.assertEqual(E.hide_paths(text), '<repo>\\models\\a.bin <home>/x.wav')

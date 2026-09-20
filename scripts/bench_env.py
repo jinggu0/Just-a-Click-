@@ -2,12 +2,14 @@
 from contextlib import contextmanager
 import csv
 import ctypes
+from ctypes import wintypes
 from datetime import datetime, timezone
 import io
 from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+MEBIBYTE = 1024 * 1024
 ES_CONTINUOUS, ES_SYSTEM_REQUIRED, ES_DISPLAY_REQUIRED = 0x80000000, 0x00000001, 0x00000002
 OVERLAY_KEY = r'SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes'
 POWER_MODES = {'961cc777-2547-4f9d-8174-7d86181b8a7a': 'best_power_efficiency',
@@ -74,6 +76,34 @@ def power_mode():
         return describe_power_mode(None, None)
     return describe_power_mode(values['ActiveOverlayAcPowerScheme'],
                                values['ActiveOverlayDcPowerScheme'])
+
+
+class _MemoryCounters(ctypes.Structure):
+    _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD),
+                ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
+                ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                ('PagefileUsage', ctypes.c_size_t), ('PeakPagefileUsage', ctypes.c_size_t)]
+
+
+def describe_memory(counters):
+    """Working set is resident memory; private (pagefile usage) is what the process commits."""
+    return {'working_set_mib': round(counters.WorkingSetSize / MEBIBYTE, 1),
+            'peak_working_set_mib': round(counters.PeakWorkingSetSize / MEBIBYTE, 1),
+            'private_mib': round(counters.PagefileUsage / MEBIBYTE, 1),
+            'peak_private_mib': round(counters.PeakPagefileUsage / MEBIBYTE, 1)}
+
+
+def process_memory(handle):
+    """Memory of a process we started; still readable after it exits while the handle is open."""
+    counters = _MemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    if not ctypes.windll.psapi.GetProcessMemoryInfo(wintypes.HANDLE(int(handle)),
+                                                    ctypes.byref(counters), counters.cb):
+        return None
+    return describe_memory(counters)
 
 
 @contextmanager
