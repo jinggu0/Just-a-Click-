@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "kind": "stt-llm-concurrency",
+  "scope": "FLEURS Korean read speech paced like a recording; estimates only",
+  "stage": "probe",
+  "condition": "ac-best_performance",
+  "diagnostic": false,
+  "minutes": 120,
+  "stt_model": "large-v3-turbo",
+  "stt_build": "blas",
+  "llm_context_tokens": 8192,
+  "fixture_id": "stt-fleurs-ko-v1",
+  "draft_max_tokens": 300,
+  "criteria": {
+    "lag_p95_max": 30.0,
+    "lag_max": 60.0,
+    "window_seconds_max": 150.0,
+    "post_recording_target_seconds": 300.0
+  },
+  "started_at": "2026-09-20T10:36:48+00:00",
+  "power_at_start": {
+    "ac_power": true,
+    "battery_percent": 60,
+    "battery_saver": false
+  },
+  "power_mode_at_start": {
+    "ac_overlay": "ded574b5-45a0-4f42-8737-46345c09c238",
+    "ac_mode": "best_performance",
+    "dc_overlay": "ded574b5-45a0-4f42-8737-46345c09c238",
+    "dc_mode": "best_performance"
+  },
+  "probes": [
+    {
+      "context_tokens": 4096,
+      "startup_seconds": 4.62,
+      "working_set_mib": 6614.3,
+      "peak_working_set_mib": 6614.3,
+      "private_mib": 6678.3,
+      "peak_private_mib": 6678.3,
+      "gpu_shared_mib": 6503.5,
+      "discharge_w": null,
+      "remaining_mwh": 31498,
+      "full_mwh": 52496,
+      "power_online": 1
+    },
+    {
+      "context_tokens": 8192,
+      "startup_seconds": 3.56,
+      "working_set_mib": 7462.4,
+      "peak_working_set_mib": 7462.4,
+      "private_mib": 7528.2,
+      "peak_private_mib": 7528.2,
+      "gpu_shared_mib": 7353.2,
+      "discharge_w": null,
+      "remaining_mwh": 31498,
+      "full_mwh": 52496,
+      "power_online": 1
+    },
+    {
+      "context_tokens": 16384,
+      "startup_seconds": 3.58,
+      "working_set_mib": 9263.2,
+      "peak_working_set_mib": 9263.2,
+      "private_mib": 9332.2,
+      "peak_private_mib": 9332.2,
+      "gpu_shared_mib": 9156.7,
+      "discharge_w": null,
+      "remaining_mwh": 31498,
+      "full_mwh": 52496,
+      "power_online": 1
+    }
+  ],
+  "runs": [],
+  "selected_allocation": null,
+  "post_recording": null,
+  "memory": {
+    "stt_private_mib": 3360.5,
+    "llm_private_mib": 7528.2,
+    "gpu_shared_mib": 7353.2,
+    "double_counted": true,
+    "total_mib": 10888.7,
+    "budget_mib": 11980.8,
+    "fits_budget": true,
+    "shared_limit_mib": 8038.4,
+    "fits_shared_limit": true
+  },
+  "memory_if_separate": {
+    "stt_private_mib": 3360.5,
+    "llm_private_mib": 7528.2,
+    "gpu_shared_mib": 7353.2,
+    "double_counted": false,
+    "total_mib": 18241.9,
+    "budget_mib": 11980.8,
+    "fits_budget": false,
+    "shared_limit_mib": 8038.4,
+    "fits_shared_limit": true
+  },
+  "battery": null,
+  "verdict": null,
+  "stt_probe": {
+    "status": "completed",
+    "rtf": 0.2909,
+    "load_seconds": 1.373,
+    "peak_private_mib": 3360.5,
+    "peak_working_set_mib": 1843.9
+  },
+  "status": "completed",
+  "finished_at": "2026-09-20T10:37:18+00:00",
+  "power_at_end": {
+    "ac_power": true,
+    "battery_percent": 60,
+    "battery_saver": false
+  },
+  "power_mode_at_end": {
+    "ac_overlay": "ded574b5-45a0-4f42-8737-46345c09c238",
+    "ac_mode": "best_performance",
+    "dc_overlay": "ded574b5-45a0-4f42-8737-46345c09c238",
+    "dc_mode": "best_performance"
+  }
+}
