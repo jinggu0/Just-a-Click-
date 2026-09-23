@@ -1698,6 +1698,8 @@ python scripts/run_concurrency.py --stage run --stt-threads <선택> --llm-threa
 - 서버가 죽어 실패하면 요약의 `error`와 `artifacts/concurrency-*/run-*/server.log`를 확인하고, 원인이 일시적이면 한 번만 다시 실행한다.
 - `verdict`가 `not_judgeable`이면 대기 모드로 중단된 것이다. 절전 설정을 확인하고 다시 측정한다.
 
+실행 중 발견(2026-09-23): 2시간 판정 측정에서 llama-server의 전용 메모리가 초안 1건마다 약 180MiB씩 늘어 7.5GiB에서 11.0GiB가 됐고, 16GB 예산 판정이 실패로 나왔다. 원인은 `llama-server`가 끝난 요청의 KV 상태를 프롬프트 캐시(`--cache-ram`, 기본 8,192MiB)에 저장하는 동작이다. 같은 전사문을 반복하면 늘지 않고 새 전사문마다 늘었으며, 캐시를 끄면(`--cache-ram 0`) 요청당 증가가 0.4MiB로 사라지고 초안 시간은 25~27초로 같았다. `llm_server.server_command`에 `cache_ram` 인자(기본 0)를 더하고 실행기에 `--cache-ram` 옵션과 요약 항목 `llm_cache_ram_mib`를 추가했다(테스트 115개).
+
 - [ ] **Step 4: 참고 측정**
 
 전원 모드를 "최고의 전원 효율성"으로 바꿔 달라고 요청한 뒤 실행한다.

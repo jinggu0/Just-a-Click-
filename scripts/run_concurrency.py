@@ -26,6 +26,9 @@ ALLOCATIONS = [{'stt_threads': 8, 'llm_threads': 4}, {'stt_threads': 8, 'llm_thr
                {'stt_threads': 6, 'llm_threads': 2}]
 PROBE_CONTEXTS = (4096, 8192, 16384)
 CONTEXT_TOKENS = 8192
+# llama-server keeps every finished request's state in a prompt cache (8 GiB by default),
+# which grew the process by ~180 MiB per draft, so benchmarks run with it disabled.
+CACHE_RAM_MIB = 0
 SCREEN_MINUTES, RUN_MINUTES = 10, 120
 DRAFT_MAX_TOKENS = 300
 BATTERY_FLOOR_PERCENT = 30
@@ -277,6 +280,8 @@ def main():
     parser.add_argument('--llm-threads', type=int, help='required with --stage run')
     parser.add_argument('--minutes', type=float, help='recording length to simulate')
     parser.add_argument('--context-tokens', type=int, default=CONTEXT_TOKENS)
+    parser.add_argument('--cache-ram', type=int, default=CACHE_RAM_MIB,
+                        help='llama-server prompt cache in MiB; 0 disables it')
     parser.add_argument('--allow-battery', action='store_true',
                         help='reference runs on battery; results are not used for the verdict')
     parser.add_argument('--diagnostic', action='store_true',
@@ -297,7 +302,8 @@ def main():
                'scope': 'FLEURS Korean read speech paced like a recording; estimates only',
                'stage': args.stage, 'condition': condition, 'diagnostic': args.diagnostic,
                'minutes': minutes, 'stt_model': STT_MODEL_ID, 'stt_build': STT_BUILD,
-               'llm_context_tokens': args.context_tokens, 'fixture_id': FIXTURE_ID,
+               'llm_context_tokens': args.context_tokens, 'llm_cache_ram_mib': args.cache_ram,
+               'fixture_id': FIXTURE_ID,
                'draft_max_tokens': DRAFT_MAX_TOKENS,
                'criteria': {'lag_p95_max': 30.0, 'lag_max': 60.0, 'window_seconds_max': 150.0,
                             'post_recording_target_seconds': 300.0},
@@ -315,7 +321,7 @@ def main():
         for context_tokens in PROBE_CONTEXTS:
             log_path = out_dir / f'probe-{context_tokens}.log'
             with LlamaServer(llm_exe, llm_model_path, log_path, context_tokens=context_tokens,
-                             threads=4) as server:
+                             threads=4, cache_ram=args.cache_ram) as server:
                 server.post('/v1/chat/completions', draft_payload('테스트', max_tokens=8))
                 record = {'context_tokens': context_tokens,
                           'startup_seconds': server.startup_seconds,
@@ -355,7 +361,8 @@ def main():
         items = schedule(fixture['chunks'], run_minutes)
         stop_flag = threading.Event()
         with LlamaServer(llm_exe, llm_model_path, folder / 'server.log',
-                         context_tokens=args.context_tokens, threads=llm_threads) as server:
+                         context_tokens=args.context_tokens, threads=llm_threads,
+                         cache_ram=args.cache_ram) as server:
             entry['llm_startup_seconds'] = server.startup_seconds
 
             def transcribe(item):

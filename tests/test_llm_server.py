@@ -35,9 +35,14 @@ class CommandTests(unittest.TestCase):
     def test_server_command_stays_on_loopback_without_the_key(self):
         command = L.server_command(Path('llama-server.exe'), Path('m.gguf'), 8080, 8192, 2)
         self.assertEqual(command[3:7], ['--host', '127.0.0.1', '--port', '8080'])
-        for flag, value in (('-c', '8192'), ('-t', '2'), ('-ngl', '99'), ('--flash-attn', 'off')):
+        for flag, value in (('-c', '8192'), ('-t', '2'), ('-ngl', '99'), ('--flash-attn', 'off'),
+                            ('--cache-ram', '0')):
             self.assertEqual(command[command.index(flag) + 1], value)
         self.assertNotIn('--api-key', command)
+
+    def test_prompt_cache_size_can_be_raised(self):
+        command = L.server_command(Path('x'), Path('m.gguf'), 1, 4096, 2, cache_ram=512)
+        self.assertEqual(command[command.index('--cache-ram') + 1], '512')
 
     def test_free_port_is_usable(self):
         self.assertGreater(L.free_port(), 1024)

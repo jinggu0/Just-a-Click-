@@ -43,6 +43,9 @@ class RequestTests(unittest.TestCase):
         self.assertEqual([m['role'] for m in payload['messages']], ['system', 'user'])
         self.assertEqual(payload['messages'][1]['content'], '전사문')
 
+    def test_prompt_cache_is_disabled_by_default(self):
+        self.assertEqual(R.CACHE_RAM_MIB, 0)
+
     def test_draft_result_reads_server_timings(self):
         response = {'choices': [{'message': {'content': '초안 본문'}}],
                     'timings': {'prompt_n': 1900, 'prompt_ms': 3000.0, 'prompt_per_second': 633.3,

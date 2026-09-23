@@ -25,12 +25,16 @@ def free_port():
 
 
 def server_command(executable, model_path, port, context_tokens, threads,
-                   flash_attn='off', batch=2048, ubatch=512, gpu_layers=99):
-    """Loopback only; the API key travels in the environment, never on the command line."""
+                   flash_attn='off', batch=2048, ubatch=512, gpu_layers=99, cache_ram=0):
+    """Loopback only; the API key travels in the environment, never on the command line.
+
+    The prompt cache is off by default: llama-server keeps each finished request's state
+    (about 180 MiB for a five-minute draft) until the default 8 GiB cache fills up.
+    """
     return [str(executable), '-m', str(model_path), '--host', '127.0.0.1', '--port', str(port),
             '-c', str(context_tokens), '-np', '1', '-ngl', str(gpu_layers), '-t', str(threads),
             '--jinja', '--reasoning', 'off', '--flash-attn', flash_attn,
-            '-b', str(batch), '-ub', str(ubatch)]
+            '-b', str(batch), '-ub', str(ubatch), '--cache-ram', str(cache_ram)]
 
 
 def open_url(request, timeout):
