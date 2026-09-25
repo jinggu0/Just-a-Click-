@@ -2140,12 +2140,13 @@ git commit -m "feat: drive the inference runtimes from the screen" -m "Co-Author
 
 - [ ] **Step 1: 녹음 화면을 탭으로 옮기기**
 
-`app/src/App.tsx`의 현재 본문(상태 훅, `run` 도우미, 입력·제어·상태·기록 부분)을 그대로 `app/src/RecordingTab.tsx`로 옮기고 `export default function RecordingTab() { … }`으로 감싼다. 동작은 바꾸지 않는다.
+`app/src/App.tsx`의 현재 본문(상태 훅, `run` 도우미, 입력·제어·상태·기록 부분)을 그대로 `app/src/RecordingTab.tsx`로 옮기고 `export default function RecordingTab() { … }`으로 감싼다. 동작은 바꾸지 않는다. 바깥 요소 `<main className="container">`는 `<div className="container">`로 바꿔 `<main>`이 겹치지 않게 하고, `import "./App.css"`는 `App.tsx`에 남긴다.
 
 - [ ] **Step 2: `App.tsx`를 탭 전환만 하도록 바꾸기**
 
 ```tsx
 import { useState } from "react";
+import "./App.css";
 import RecordingTab from "./RecordingTab";
 import InferenceTab from "./InferenceTab";
 import SearchTab from "./SearchTab";
@@ -2253,8 +2254,8 @@ export default function InferenceTab() {
       <p style={{ whiteSpace: "pre-wrap" }}>{status?.last_answer || "없음"}</p>
       <h3>기록</h3>
       <ul>
-        {log.map((entry) => (
-          <li key={entry}>{entry}</li>
+        {log.map((entry, index) => (
+          <li key={index}>{entry}</li>
         ))}
       </ul>
     </section>
