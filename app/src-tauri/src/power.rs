@@ -7,6 +7,7 @@ pub const RECORDING_STATE: u32 = ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY
 /// Holds the sleep request for as long as it lives; dropping it restores normal sleep.
 pub struct KeepAwake {
     set_state: fn(u32) -> u32,
+    accepted: bool,
 }
 
 impl KeepAwake {
@@ -15,8 +16,17 @@ impl KeepAwake {
     }
 
     pub fn with(set_state: fn(u32) -> u32) -> Self {
-        set_state(RECORDING_STATE);
-        Self { set_state }
+        let accepted = set_state(RECORDING_STATE) != 0;
+        Self {
+            set_state,
+            accepted,
+        }
+    }
+
+    /// Whether Windows took the request. `SetThreadExecutionState` answers with the
+    /// previous state and returns zero only when the request was refused.
+    pub fn accepted(&self) -> bool {
+        self.accepted
     }
 }
 
@@ -55,17 +65,22 @@ mod tests {
     fn requests_sleep_block_and_restores_on_drop() {
         CALLS.store(0, Ordering::SeqCst);
         {
-            let _guard = KeepAwake::with(record);
+            let guard = KeepAwake::with(record);
             assert_eq!(CALLS.load(Ordering::SeqCst), 1);
             assert_eq!(LAST.load(Ordering::SeqCst), 0x8000_0003);
+            assert!(!guard.accepted(), "a zero answer means the request was refused");
         }
         assert_eq!(CALLS.load(Ordering::SeqCst), 2);
         assert_eq!(LAST.load(Ordering::SeqCst), ES_CONTINUOUS);
     }
 
     #[test]
-    fn real_call_returns_previous_state() {
+    #[cfg(windows)]
+    fn windows_takes_the_recording_request() {
         let guard = KeepAwake::new();
-        drop(guard);
+        assert!(
+            guard.accepted(),
+            "SetThreadExecutionState refused the recording request"
+        );
     }
 }
