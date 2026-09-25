@@ -1479,7 +1479,7 @@ fn queries(rows: &[Segment], terms: &[String]) -> Vec<(String, String)> {
     let mut words: Vec<(&String, &usize)> = counts.iter().collect();
     words.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
     let mut picked: Vec<(String, String)> = Vec::new();
-    let mut count = |picked: &Vec<(String, String)>, kind: &str| {
+    let count = |picked: &Vec<(String, String)>, kind: &str| {
         picked.iter().filter(|(existing, _)| existing == kind).count()
     };
     for (word, _) in &words {
