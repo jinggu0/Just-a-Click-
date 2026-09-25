@@ -17,5 +17,6 @@
 - [llama-bench 재측정: 최고 성능 전원 모드](docs/validation/2026-09-17-llama-bench-best-performance.md)
 - [로컬 STT 측정: whisper.cpp CPU와 FLEURS 한국어](docs/validation/2026-09-18-stt-bench.md)
 - [녹음 중 STT·LLM 동시 실행 측정](docs/validation/2026-09-23-concurrency.md)
+- [앱 기술 검증 1차: Tauri 2 빌드와 녹음](docs/validation/2026-09-25-app-stack.md)
 - [에이전트 작업 지침](AGENTS.md)
 - [Claude 작업 지침](CLAUDE.md)
