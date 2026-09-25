@@ -468,7 +468,8 @@ fn random_key() -> String {
         .collect()
 }
 
-/// The status code `/health` answers with. 401 means the key was refused.
+/// The status code `/v1/models` answers with. In b10994 only `/health` is open without a
+/// key; this endpoint returns 401 when the key is missing or wrong.
 pub fn check_auth(base: &str, key: &str) -> Result<u16, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(5))

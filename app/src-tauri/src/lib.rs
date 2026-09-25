@@ -2,6 +2,7 @@
 pub mod audio;
 pub mod chunker;
 pub mod convert;
+pub mod llm;
 pub mod power;
 pub mod process;
 pub mod recorder;
