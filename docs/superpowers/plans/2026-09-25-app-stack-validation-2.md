@@ -2057,10 +2057,15 @@ fn cancel_draft(state: tauri::State<'_, Mutex<inference::Inference>>) -> Result<
 fn run_transcribe(root: String, chunk: String, state: tauri::State<'_, Mutex<inference::Inference>>) -> Result<(), String> {
     let root = std::path::PathBuf::from(root);
     let chunk = std::path::PathBuf::from(chunk);
+    // whisper-cli appends `.txt` to this name, so the name itself must carry no extension.
+    let stem = chunk
+        .file_stem()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default();
     let settings = stt::TranscribeSettings {
         executable: root.join("runtimes/whisper-b5130/blas/Release/whisper-cli.exe"),
         model: root.join("models/whisper/ggml-large-v3-turbo.bin"),
-        output: chunk.with_extension("screen"),
+        output: chunk.with_file_name(format!("{stem}-screen")),
         chunk,
         threads: 8,
     };

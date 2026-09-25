@@ -49,6 +49,11 @@ impl ProcessGroup {
     }
 }
 
+// A job object handle is process-wide and the Win32 calls on it are thread-safe, so the
+// group can be shared with the worker threads that start the children.
+unsafe impl Send for ProcessGroup {}
+unsafe impl Sync for ProcessGroup {}
+
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         let _ = unsafe { CloseHandle(self.job) };
