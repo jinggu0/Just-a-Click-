@@ -1,3 +1,4 @@
+mod audio;
 mod chunker;
 mod convert;
 mod power;
