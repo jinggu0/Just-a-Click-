@@ -1,0 +1,172 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "points",
+    "concepts",
+    "examples",
+    "code",
+    "notices"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "lecture-draft-v1"
+    },
+    "points": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "concepts": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/concept"
+      }
+    },
+    "examples": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "code": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/code"
+      }
+    },
+    "notices": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "$ref": "#/$defs/notice"
+      }
+    }
+  },
+  "$defs": {
+    "segment": {
+      "type": "string"
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "optional_text": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content",
+        "source_refs"
+      ],
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "concept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source_refs"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "language",
+        "explanation",
+        "source_refs"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/text"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "shell",
+            "c",
+            "python",
+            "other"
+          ]
+        },
+        "explanation": {
+          "$ref": "#/$defs/text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "notice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "content",
+        "date_text",
+        "scope_text",
+        "source_refs"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "exam",
+            "assignment",
+            "announcement"
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/text"
+        },
+        "date_text": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "scope_text": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    }
+  }
+}

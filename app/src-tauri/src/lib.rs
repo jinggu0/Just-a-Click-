@@ -1,6 +1,7 @@
 //! Tauri commands for the recording validation build.
 pub mod audio;
 pub mod chunker;
+pub mod contract;
 pub mod convert;
 pub mod inference;
 pub mod llm;
