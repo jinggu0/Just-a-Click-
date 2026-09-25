@@ -6,6 +6,7 @@ pub mod llm;
 pub mod power;
 pub mod process;
 pub mod recorder;
+pub mod stt;
 pub mod wav;
 
 use std::path::PathBuf;
