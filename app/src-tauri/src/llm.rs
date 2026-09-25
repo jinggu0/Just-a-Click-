@@ -221,6 +221,79 @@ pub fn stream_draft(
     Ok((stop, text))
 }
 
+/// One schema-constrained answer and what the server reports about it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Completion {
+    pub content: String,
+    pub finish_reason: String,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub seconds: f64,
+}
+
+/// A non-streaming request whose output the server constrains to the schema.
+pub fn json_body(system: &str, user: &str, schema: &serde_json::Value, max_tokens: u32) -> serde_json::Value {
+    serde_json::json!({
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": 0.2,
+        "stream": false,
+        "response_format": {"type": "json_object", "schema": schema},
+    })
+}
+
+pub fn read_completion(answer: &serde_json::Value, seconds: f64) -> Result<Completion, String> {
+    let choice = &answer["choices"][0];
+    let content = choice["message"]["content"]
+        .as_str()
+        .ok_or("the answer has no content")?;
+    let finish_reason = choice["finish_reason"]
+        .as_str()
+        .ok_or("the answer has no finish reason")?;
+    Ok(Completion {
+        content: content.to_string(),
+        finish_reason: finish_reason.to_string(),
+        prompt_tokens: answer["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
+        completion_tokens: answer["usage"]["completion_tokens"].as_u64().unwrap_or(0),
+        seconds,
+    })
+}
+
+/// Sends one schema-constrained request and waits for the whole answer.
+pub fn complete_json(
+    base: &str,
+    key: &str,
+    system: &str,
+    user: &str,
+    schema: &serde_json::Value,
+    max_tokens: u32,
+) -> Result<Completion, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(None)
+        .build()
+        .map_err(|error| error.to_string())?;
+    let started = Instant::now();
+    let response = client
+        .post(format!("{base}/v1/chat/completions"))
+        .header("Authorization", format!("Bearer {key}"))
+        .header("Content-Type", "application/json")
+        .body(json_body(system, user, schema, max_tokens).to_string())
+        .send()
+        .map_err(|error| format!("request failed: {error}"))?;
+    let status = response.status().as_u16();
+    let text = response.text().map_err(|error| format!("answer unreadable: {error}"))?;
+    if status != 200 {
+        let head: String = text.chars().take(300).collect();
+        return Err(format!("server answered {status}: {head}"));
+    }
+    let answer: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| format!("answer is not JSON: {error}"))?;
+    read_completion(&answer, started.elapsed().as_secs_f64())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,6 +366,32 @@ mod tests {
             .expect("stream");
         assert_eq!(stop, Stop::Finished);
         assert_eq!(seen, "가나");
+    }
+
+    #[test]
+    fn a_json_request_carries_the_schema_and_does_not_stream() {
+        let schema = serde_json::json!({"type": "object"});
+        let body = json_body("규칙", "전사", &schema, 900);
+        assert_eq!(body["stream"], serde_json::json!(false));
+        assert_eq!(body["max_tokens"], serde_json::json!(900));
+        assert_eq!(body["response_format"]["type"], serde_json::json!("json_object"));
+        assert_eq!(body["response_format"]["schema"], schema);
+        assert_eq!(body["messages"][0]["content"], serde_json::json!("규칙"));
+        assert_eq!(body["messages"][1]["content"], serde_json::json!("전사"));
+    }
+
+    #[test]
+    fn a_completion_keeps_the_text_the_reason_and_the_token_counts() {
+        let answer = serde_json::json!({
+            "choices": [{"message": {"content": "{}"}, "finish_reason": "length"}],
+            "usage": {"prompt_tokens": 1052, "completion_tokens": 300}
+        });
+        let completion = read_completion(&answer, 21.5).expect("completion");
+        assert_eq!(completion.content, "{}");
+        assert_eq!(completion.finish_reason, "length");
+        assert_eq!(completion.prompt_tokens, 1052);
+        assert_eq!(completion.completion_tokens, 300);
+        assert!(read_completion(&serde_json::json!({"choices": []}), 1.0).is_err());
     }
 
     #[test]
