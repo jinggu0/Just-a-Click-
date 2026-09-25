@@ -3,6 +3,7 @@ pub mod audio;
 pub mod chunker;
 pub mod convert;
 pub mod power;
+pub mod process;
 pub mod recorder;
 pub mod wav;
 
