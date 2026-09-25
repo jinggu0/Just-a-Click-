@@ -1,0 +1,101 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "notices"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "lecture-notices-v1"
+    },
+    "notices": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "$ref": "#/$defs/notice"
+      }
+    }
+  },
+  "$defs": {
+    "segment": {
+      "type": "string"
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "optional_text": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content",
+        "source_refs"
+      ],
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "notice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "content",
+        "date_text",
+        "scope_text",
+        "status",
+        "source_refs"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "exam",
+            "assignment",
+            "announcement"
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/text"
+        },
+        "date_text": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "scope_text": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "scheduled",
+            "cancelled"
+          ]
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "topic",
+    "concepts",
+    "examples",
+    "terms",
+    "review"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "lecture-note-body-v1"
+    },
+    "topic": {
+      "$ref": "#/$defs/item"
+    },
+    "concepts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/concept"
+      }
+    },
+    "examples": {
+      "type": "array",
+      "maxItems": 15,
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "terms": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/term"
+      }
+    },
+    "review": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "segment": {
+      "type": "string"
+    },
+    "refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "optional_text": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content",
+        "source_refs"
+      ],
+      "properties": {
+        "content": {
+          "$ref": "#/$defs/text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "concept": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "explanation",
+        "source_refs"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/text"
+        },
+        "explanation": {
+          "$ref": "#/$defs/text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "term_ko",
+        "definition",
+        "term_en",
+        "source_refs"
+      ],
+      "properties": {
+        "term_ko": {
+          "$ref": "#/$defs/text"
+        },
+        "definition": {
+          "$ref": "#/$defs/text"
+        },
+        "term_en": {
+          "$ref": "#/$defs/optional_text"
+        },
+        "source_refs": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    }
+  }
+}

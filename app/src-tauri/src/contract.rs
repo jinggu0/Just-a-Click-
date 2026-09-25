@@ -8,8 +8,13 @@ use std::collections::{BTreeMap, HashSet};
 use serde::de::{DeserializeSeed, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Serialize;
 
-pub const DRAFT_SCHEMA: &str = include_str!("../../../schemas/lecture-draft-v1.json");
-pub const NOTE_SCHEMA: &str = include_str!("../../../schemas/lecture-note-v1.json");
+pub const POINTS_SCHEMA: &str = include_str!("../../../schemas/lecture-points-v1.json");
+pub const NOTICES_SCHEMA: &str = include_str!("../../../schemas/lecture-notices-v1.json");
+pub const CODE_SCHEMA: &str = include_str!("../../../schemas/lecture-code-v1.json");
+pub const NOTE_BODY_SCHEMA: &str = include_str!("../../../schemas/lecture-note-body-v1.json");
+
+/// Every lecture schema the model is constrained with.
+pub const LECTURE_SCHEMAS: [&str; 4] = [POINTS_SCHEMA, NOTICES_SCHEMA, CODE_SCHEMA, NOTE_BODY_SCHEMA];
 
 /// Words that stand in for missing content. The screen shows those labels itself, so an
 /// item that only says them is filler.
@@ -276,7 +281,7 @@ mod tests {
     #[test]
     fn the_generation_schema_allows_only_the_given_segments() {
         let ids = vec!["s1".to_string(), "s2".to_string()];
-        for schema in [DRAFT_SCHEMA, NOTE_SCHEMA] {
+        for schema in LECTURE_SCHEMAS {
             let value = generation_schema(schema, &ids).expect("schema");
             assert_eq!(value["$defs"]["segment"]["enum"], serde_json::json!(["s1", "s2"]));
         }
