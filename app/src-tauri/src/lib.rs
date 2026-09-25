@@ -1,5 +1,6 @@
 mod chunker;
 mod convert;
+mod power;
 mod wav;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
