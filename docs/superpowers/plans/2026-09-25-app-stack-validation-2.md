@@ -12,7 +12,7 @@
 
 - 설계는 [앱 기술 검증 2차 설계](../specs/2026-09-25-app-stack-validation-2-design.md)를 따른다. 성공 기준과 절차를 바꾸지 않는다. 단, ④의 판정은 이 계획 작성 중 확인한 사실에 따라 "질의 종류별 재현율 중심"으로 적용한다(아래 사전 확인 참고).
 - 새로 넣는 서드파티 크레이트는 `rusqlite` 0.40(MIT) 하나다. `reqwest`·`windows`·`tokio`는 이미 의존성 트리에 있으므로 기능(feature)만 더한다. `keyring`은 쓰지 않는다.
-- 추론 실행 설정은 [결정 0009](../../decisions/0009-concurrent-processing.md)를 따른다: 컨텍스트 8,192, `-np 1`, `--cache-ram 0`, `-ngl 99`, LLM 2스레드, STT 8스레드, whisper는 `-nt`.
+- 추론 실행 설정은 [결정 0009](../../decisions/0009-concurrent-processing.md)의 측정 설정을 따른다: 컨텍스트 8,192, `-np 1`, `--cache-ram 0`, `-ngl 99`, `--jinja --reasoning off`, LLM 2스레드, STT 8스레드, whisper는 `-nt`. `--reasoning off`가 빠지면 Qwen3가 모든 출력을 `reasoning_content`로 보내 초안 본문이 비는 것을 검증 중에 확인했다.
 - 토큰은 환경 변수 `LLAMA_API_KEY`로만 자식에 넘긴다. 명령줄·로그·상태에 토큰 값을 넣지 않는다.
 - 서버는 `127.0.0.1`에만 연다. 포트는 0번 바인딩으로 빈 포트를 먼저 잡는다.
 - 코퍼스·DB·자식 로그·측정 JSON은 `artifacts/` 아래에만 만들고 커밋하지 않는다. 사용자 음성과 모델 가중치도 커밋하지 않는다.
@@ -265,6 +265,8 @@ mod tests {
         assert!(arguments.contains(&"--cache-ram".to_string()));
         assert!(arguments.contains(&"0".to_string()));
         assert!(arguments.contains(&"127.0.0.1".to_string()));
+        assert!(arguments.contains(&"--jinja".to_string()));
+        assert!(arguments.windows(2).any(|pair| pair[0] == "--reasoning" && pair[1] == "off"));
         assert!(!arguments.iter().any(|value| value.contains("secret-key")));
         let environment: Vec<String> = command
             .get_envs()
@@ -365,6 +367,8 @@ pub struct ServerSettings {
 }
 
 /// Decision 0009: context 8,192, one slot, no prompt cache, every layer on the GPU.
+/// Reasoning stays off: otherwise Qwen3 streams everything as `reasoning_content` and
+/// the draft text (`content`) comes back empty.
 pub fn server_command(settings: &ServerSettings, port: u16, key: &str) -> Command {
     let mut command = Command::new(&settings.executable);
     command
@@ -379,6 +383,8 @@ pub fn server_command(settings: &ServerSettings, port: u16, key: &str) -> Comman
         .args(["-b".to_string(), "2048".to_string()])
         .args(["-ub".to_string(), "512".to_string()])
         .args(["--cache-ram".to_string(), "0".to_string()])
+        .arg("--jinja")
+        .args(["--reasoning".to_string(), "off".to_string()])
         .env("LLAMA_API_KEY", key)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -897,6 +903,13 @@ fn main() -> Result<(), String> {
     };
     let memory_start = private_mib(process_id);
 
+    // The first request after loading warms the GPU up; without this the cancel below lands
+    // before any text is generated and proves nothing.
+    stream_draft(&base, &key, "안녕하세요.", 8, &AtomicBool::new(false))?;
+    let baseline_started = Instant::now();
+    stream_draft(&base, &key, "한 문장으로 답해 주세요.", 64, &AtomicBool::new(false))?;
+    let baseline_seconds = (baseline_started.elapsed().as_secs_f64() * 100.0).round() / 100.0;
+
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&cancel);
     std::thread::spawn(move || {
@@ -913,8 +926,12 @@ fn main() -> Result<(), String> {
         std::thread::sleep(Duration::from_millis(500));
         private_mib(sampler_id)
     });
+    // With a single slot, this request would queue behind the cancelled one if the server
+    // kept generating it, so its duration shows whether the cancel reached the server.
     let quiet = AtomicBool::new(false);
+    let follow_started = Instant::now();
     let (follow_up, answer) = stream_draft(&base, &key, "한 문장으로 답해 주세요.", 64, &quiet)?;
+    let follow_seconds = (follow_started.elapsed().as_secs_f64() * 100.0).round() / 100.0;
     let memory_during = sample.join().unwrap_or(None);
 
     let transcript = run(
@@ -942,8 +959,18 @@ fn main() -> Result<(), String> {
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false);
-    std::thread::sleep(Duration::from_secs(1));
-    let alive_after_kill = server.alive();
+    // Termination is asynchronous: the driver releases the model's GPU memory before the
+    // process reports its exit, so poll rather than sample once.
+    let kill_started = Instant::now();
+    let mut alive_after_kill = true;
+    while kill_started.elapsed() < Duration::from_secs(15) {
+        if !server.alive() {
+            alive_after_kill = false;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let exit_seconds = (kill_started.elapsed().as_secs_f64() * 10.0).round() / 10.0;
     let mut restarted = Server::start(&group, &server_settings(&root, out_dir.join("server-2.log")))?;
     let restart_seconds = restarted.ready_seconds;
     let memory_after_restart = private_mib(restarted.process_id());
@@ -957,11 +984,12 @@ fn main() -> Result<(), String> {
         "lan_blocked": lan_blocked,
         "draft_cancel": {"stop": format!("{stop:?}"), "seconds": (cancel_seconds * 100.0).round() / 100.0,
                           "characters": partial.chars().count()},
-        "draft_after_cancel": {"stop": format!("{follow_up:?}"), "characters": answer.chars().count()},
+        "draft_after_cancel": {"stop": format!("{follow_up:?}"), "characters": answer.chars().count(),
+                               "seconds": follow_seconds, "alone_seconds": baseline_seconds},
         "transcribe": {"characters": transcript_text.chars().count(),
                         "sample": transcript_text.chars().take(40).collect::<String>()},
         "transcribe_cancel": {"outcome": format!("{stt_outcome:?}"), "leftover_file": leftover},
-        "crash_recovery": {"killed": killed, "alive_after_kill": alive_after_kill,
+        "crash_recovery": {"killed": killed, "alive_after_kill": alive_after_kill, "exit_seconds": exit_seconds,
                             "restart_seconds": restart_seconds, "stopped_cleanly": stopped},
         "memory_mib": {"start": memory_start, "during_request": memory_during, "after_restart": memory_after_restart},
     });
@@ -1482,23 +1510,32 @@ fn queries(rows: &[Segment], terms: &[String]) -> Vec<(String, String)> {
     let count = |picked: &Vec<(String, String)>, kind: &str| {
         picked.iter().filter(|(existing, _)| existing == kind).count()
     };
+    // A query must occur in the text as typed and must not repeat another one; stripping
+    // punctuation can glue "6.22" into "622", which the text never contains.
+    let usable = |picked: &Vec<(String, String)>, query: &str| {
+        !picked.iter().any(|(_, existing)| existing == query) && !truth(rows, query).is_empty()
+    };
     for (word, _) in &words {
         let characters: Vec<char> = word.chars().collect();
+        let stem: String = characters[..characters.len().saturating_sub(1)].iter().collect();
+        let middle: String = characters.iter().skip(1).take(3).collect();
         if count(&picked, "어간+조사") < 4
             && characters.len() >= 4
             && hangul(word)
             && PARTICLES.contains(&characters[characters.len() - 1])
+            && usable(&picked, &stem)
         {
-            picked.push(("어간+조사".into(), characters[..characters.len() - 1].iter().collect()));
-        } else if count(&picked, "어중") < 4 && characters.len() >= 5 && hangul(word) {
-            picked.push(("어중".into(), characters[1..4].iter().collect()));
-        } else if count(&picked, "두 글자") < 4 && characters.len() == 2 && hangul(word) {
+            picked.push(("어간+조사".into(), stem));
+        } else if count(&picked, "어중") < 4 && characters.len() >= 5 && hangul(word) && usable(&picked, &middle) {
+            picked.push(("어중".into(), middle));
+        } else if count(&picked, "두 글자") < 4 && characters.len() == 2 && hangul(word) && usable(&picked, word) {
             picked.push(("두 글자".into(), word.to_string()));
-        } else if count(&picked, "영문") < 2
+        } else if count(&picked, "영문·숫자") < 2
             && characters.len() >= 3
             && word.chars().all(|character| character.is_ascii_alphanumeric())
+            && usable(&picked, word)
         {
-            picked.push(("영문".into(), word.to_string()));
+            picked.push(("영문·숫자".into(), word.to_string()));
         }
     }
     for term in terms.iter().take(2) {

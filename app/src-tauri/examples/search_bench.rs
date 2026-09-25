@@ -82,23 +82,32 @@ fn queries(rows: &[Segment], terms: &[String]) -> Vec<(String, String)> {
     let count = |picked: &Vec<(String, String)>, kind: &str| {
         picked.iter().filter(|(existing, _)| existing == kind).count()
     };
+    // A query must occur in the text as typed and must not repeat another one; stripping
+    // punctuation can glue "6.22" into "622", which the text never contains.
+    let usable = |picked: &Vec<(String, String)>, query: &str| {
+        !picked.iter().any(|(_, existing)| existing == query) && !truth(rows, query).is_empty()
+    };
     for (word, _) in &words {
         let characters: Vec<char> = word.chars().collect();
+        let stem: String = characters[..characters.len().saturating_sub(1)].iter().collect();
+        let middle: String = characters.iter().skip(1).take(3).collect();
         if count(&picked, "어간+조사") < 4
             && characters.len() >= 4
             && hangul(word)
             && PARTICLES.contains(&characters[characters.len() - 1])
+            && usable(&picked, &stem)
         {
-            picked.push(("어간+조사".into(), characters[..characters.len() - 1].iter().collect()));
-        } else if count(&picked, "어중") < 4 && characters.len() >= 5 && hangul(word) {
-            picked.push(("어중".into(), characters[1..4].iter().collect()));
-        } else if count(&picked, "두 글자") < 4 && characters.len() == 2 && hangul(word) {
+            picked.push(("어간+조사".into(), stem));
+        } else if count(&picked, "어중") < 4 && characters.len() >= 5 && hangul(word) && usable(&picked, &middle) {
+            picked.push(("어중".into(), middle));
+        } else if count(&picked, "두 글자") < 4 && characters.len() == 2 && hangul(word) && usable(&picked, word) {
             picked.push(("두 글자".into(), word.to_string()));
-        } else if count(&picked, "영문") < 2
+        } else if count(&picked, "영문·숫자") < 2
             && characters.len() >= 3
             && word.chars().all(|character| character.is_ascii_alphanumeric())
+            && usable(&picked, word)
         {
-            picked.push(("영문".into(), word.to_string()));
+            picked.push(("영문·숫자".into(), word.to_string()));
         }
     }
     for term in terms.iter().take(2) {
