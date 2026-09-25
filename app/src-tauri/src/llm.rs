@@ -31,6 +31,8 @@ pub struct ServerSettings {
 }
 
 /// Decision 0009: context 8,192, one slot, no prompt cache, every layer on the GPU.
+/// Reasoning stays off: otherwise Qwen3 streams everything as `reasoning_content` and
+/// the draft text (`content`) comes back empty.
 pub fn server_command(settings: &ServerSettings, port: u16, key: &str) -> Command {
     let mut command = Command::new(&settings.executable);
     command
@@ -45,6 +47,8 @@ pub fn server_command(settings: &ServerSettings, port: u16, key: &str) -> Comman
         .args(["-b".to_string(), "2048".to_string()])
         .args(["-ub".to_string(), "512".to_string()])
         .args(["--cache-ram".to_string(), "0".to_string()])
+        .arg("--jinja")
+        .args(["--reasoning".to_string(), "off".to_string()])
         .env("LLAMA_API_KEY", key)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -240,6 +244,8 @@ mod tests {
         assert!(arguments.contains(&"--cache-ram".to_string()));
         assert!(arguments.contains(&"0".to_string()));
         assert!(arguments.contains(&"127.0.0.1".to_string()));
+        assert!(arguments.contains(&"--jinja".to_string()));
+        assert!(arguments.windows(2).any(|pair| pair[0] == "--reasoning" && pair[1] == "off"));
         assert!(!arguments.iter().any(|value| value.contains("secret-key")));
         let environment: Vec<String> = command
             .get_envs()
