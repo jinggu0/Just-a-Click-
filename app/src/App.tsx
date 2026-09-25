@@ -89,7 +89,7 @@ function App() {
           저장 폴더
           <input
             value={directory}
-            placeholder="C:\temp_git\Just-a-Click-\artifacts\app-recordings\test"
+            placeholder="C:\녹음\검증"
             disabled={recording}
             onChange={(event) => setDirectory(event.currentTarget.value)}
             style={{ width: "100%" }}
