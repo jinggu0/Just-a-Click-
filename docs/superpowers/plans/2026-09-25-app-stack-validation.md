@@ -1010,6 +1010,32 @@ pub fn capture(
     result
 }
 
+/// Reads every packet the device has queued. WASAPI hands out one packet per read, so a
+/// single read per wake-up falls behind and the driver reports discontinuities.
+fn drain_packets(
+    capture_client: &wasapi::AudioCaptureClient,
+    queue: &mut VecDeque<u8>,
+    signals: &Signals,
+) -> Result<(), String> {
+    loop {
+        let waiting = capture_client
+            .get_next_packet_size()
+            .map_err(|error| format!("packet size failed: {error}"))?;
+        if waiting == Some(0) {
+            return Ok(());
+        }
+        let info = capture_client
+            .read_from_device_to_deque(queue)
+            .map_err(|error| format!("capture read failed: {error}"))?;
+        if info.flags.data_discontinuity {
+            signals.discontinuities.fetch_add(1, Ordering::Relaxed);
+        }
+        if waiting.is_none() {
+            return Ok(());
+        }
+    }
+}
+
 fn capture_loop(
     capture_client: &wasapi::AudioCaptureClient,
     event: &wasapi::Handle,
@@ -1022,12 +1048,7 @@ fn capture_loop(
     let mut delivered = 0u64;
     let mut recording_since = Instant::now();
     while !signals.stop.load(Ordering::Relaxed) {
-        let info = capture_client
-            .read_from_device_to_deque(queue)
-            .map_err(|error| format!("capture read failed: {error}"))?;
-        if info.flags.data_discontinuity {
-            signals.discontinuities.fetch_add(1, Ordering::Relaxed);
-        }
+        drain_packets(capture_client, queue, signals)?;
         if signals.paused.load(Ordering::Relaxed) {
             queue.clear();
             delivered = 0;
@@ -1135,6 +1156,8 @@ mod tests {
 
 Run: `cd app/src-tauri && cargo test`
 Expected: `test result: ok. 18 passed; 0 failed; 2 ignored`
+
+실행 중 발견(2026-09-25): 이벤트마다 패킷을 하나만 읽으면 밀려서 WASAPI가 불연속을 보고했다(14초에 3회). `drain_packets`로 대기 중인 패킷을 모두 읽자 20초에 1회로 줄었고, 남은 1회는 스트림 시작 시 붙는 정상 플래그다. 위 코드에는 이 수정이 들어 있다.
 
 - [ ] **Step 3: 실제 장치로 확인**
 
@@ -1564,12 +1587,12 @@ mod tests {
 
 ```rust
 //! Tauri commands for the recording validation build.
-mod audio;
-mod chunker;
-mod convert;
-mod power;
-mod recorder;
-mod wav;
+pub mod audio;
+pub mod chunker;
+pub mod convert;
+pub mod power;
+pub mod recorder;
+pub mod wav;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -1805,6 +1828,92 @@ Expected: 출력 없이 종료 코드 0.
 ```bash
 git add app/src-tauri/src/recorder.rs app/src-tauri/src/lib.rs app/src/App.tsx
 git commit -m "feat: add the recording screen and its Tauri commands" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+- [ ] **Step 5: 검증 실행기 추가**
+
+검증 녹음을 정확한 시간으로 반복하려면 화면 클릭보다 명령이 안전하다. 모듈을 `pub mod`로 바꾸고 다음 예제를 추가한다.
+
+`app/src-tauri/src/lib.rs`의 모듈 선언을 `pub mod audio;`처럼 모두 `pub`으로 바꾼다.
+
+`app/src-tauri/examples/record_check.rs`:
+
+```rust
+//! Times a recording through the same API as the app so validation runs are repeatable.
+//!
+//! Usage: cargo run --example record_check -- <microphone|system_sound> <seconds> <directory>
+//!        [--pause-at <seconds> --pause-for <seconds>]
+use std::path::PathBuf;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
+
+use app_lib::audio::Source;
+use app_lib::recorder::Recorder;
+
+fn main() -> Result<(), String> {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if arguments.len() < 3 {
+        return Err("usage: record_check <microphone|system_sound> <seconds> <directory> \
+                    [--pause-at <seconds> --pause-for <seconds>]"
+            .to_string());
+    }
+    let source = match arguments[0].as_str() {
+        "microphone" => Source::Microphone,
+        "system_sound" => Source::SystemSound,
+        other => return Err(format!("unknown source: {other}")),
+    };
+    let seconds: f64 = arguments[1].parse().map_err(|_| "seconds must be a number")?;
+    let directory = PathBuf::from(&arguments[2]);
+    let pause_at = flag(&arguments, "--pause-at");
+    let pause_for = flag(&arguments, "--pause-for");
+
+    let mut recorder = Recorder::new();
+    let started = Instant::now();
+    let status = recorder.start(source, directory)?;
+    println!("started: {}", serde_json::to_string(&status).unwrap_or_default());
+    let mut paused = false;
+    while started.elapsed().as_secs_f64() < seconds {
+        if let (Some(at), Some(duration)) = (pause_at, pause_for) {
+            if !paused && started.elapsed().as_secs_f64() >= at {
+                println!("pausing at {:.1}s for {duration:.1}s", started.elapsed().as_secs_f64());
+                recorder.pause()?;
+                sleep(Duration::from_secs_f64(duration));
+                recorder.resume()?;
+                paused = true;
+                println!("resumed at {:.1}s", started.elapsed().as_secs_f64());
+            }
+        }
+        sleep(Duration::from_secs(5));
+        let status = recorder.status();
+        println!(
+            "{:.0}s phase {:?} chunks {} recorded {:.1}s silence {:.1}s discontinuities {}",
+            started.elapsed().as_secs_f64(),
+            status.phase,
+            status.chunks,
+            status.recorded_seconds,
+            status.silence_seconds,
+            status.discontinuities
+        );
+    }
+    let status = recorder.stop()?;
+    println!("stopped: {}", serde_json::to_string(&status).unwrap_or_default());
+    Ok(())
+}
+
+fn flag(arguments: &[String], name: &str) -> Option<f64> {
+    let index = arguments.iter().position(|value| value == name)?;
+    arguments.get(index + 1)?.parse().ok()
+}
+```
+
+Run: `cd app/src-tauri && cargo run --quiet --example record_check -- microphone 20 "<저장소>rtifactspp-recordings\harness-check"`
+Expected: 5초마다 상태 줄이 나오고 마지막에 `stopped: {...}` JSON이 나온다. 조각 1개, 무음 보정 0초, 불연속 1회(시작 플래그)다.
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add app/src-tauri/examples/record_check.rs app/src-tauri/src/lib.rs app/src-tauri/src/audio.rs
+git commit -m "feat: add a timed recording harness for validation runs" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---

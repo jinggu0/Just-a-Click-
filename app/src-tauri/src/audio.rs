@@ -181,6 +181,32 @@ pub fn capture(
     result
 }
 
+/// Reads every packet the device has queued. WASAPI hands out one packet per read, so a
+/// single read per wake-up falls behind and the driver reports discontinuities.
+fn drain_packets(
+    capture_client: &wasapi::AudioCaptureClient,
+    queue: &mut VecDeque<u8>,
+    signals: &Signals,
+) -> Result<(), String> {
+    loop {
+        let waiting = capture_client
+            .get_next_packet_size()
+            .map_err(|error| format!("packet size failed: {error}"))?;
+        if waiting == Some(0) {
+            return Ok(());
+        }
+        let info = capture_client
+            .read_from_device_to_deque(queue)
+            .map_err(|error| format!("capture read failed: {error}"))?;
+        if info.flags.data_discontinuity {
+            signals.discontinuities.fetch_add(1, Ordering::Relaxed);
+        }
+        if waiting.is_none() {
+            return Ok(());
+        }
+    }
+}
+
 fn capture_loop(
     capture_client: &wasapi::AudioCaptureClient,
     event: &wasapi::Handle,
@@ -193,12 +219,7 @@ fn capture_loop(
     let mut delivered = 0u64;
     let mut recording_since = Instant::now();
     while !signals.stop.load(Ordering::Relaxed) {
-        let info = capture_client
-            .read_from_device_to_deque(queue)
-            .map_err(|error| format!("capture read failed: {error}"))?;
-        if info.flags.data_discontinuity {
-            signals.discontinuities.fetch_add(1, Ordering::Relaxed);
-        }
+        drain_packets(capture_client, queue, signals)?;
         if signals.paused.load(Ordering::Relaxed) {
             queue.clear();
             delivered = 0;

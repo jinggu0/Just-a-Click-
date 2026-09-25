@@ -1,10 +1,10 @@
 //! Tauri commands for the recording validation build.
-mod audio;
-mod chunker;
-mod convert;
-mod power;
-mod recorder;
-mod wav;
+pub mod audio;
+pub mod chunker;
+pub mod convert;
+pub mod power;
+pub mod recorder;
+pub mod wav;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
