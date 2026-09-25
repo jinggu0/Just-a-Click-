@@ -802,7 +802,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use app_lib::llm::{check_auth, stream_draft, Server, ServerSettings, Stop};
+use app_lib::llm::{check_auth, stream_draft, Server, ServerSettings};
 use app_lib::process::ProcessGroup;
 use app_lib::stt::{output_file, run, Outcome, TranscribeSettings};
 
