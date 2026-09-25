@@ -19,7 +19,7 @@ v1 실측에서 한 번의 호출로 여러 섹션을 채우게 하자 내용이
 | --- | --- |
 | 분리 범위 | 초안과 노트 조립까지. 창마다 요점·공지·코드를 따로 호출하고, 노트의 공지·코드는 앱이 초안에서 합친다 |
 | 모호한 기한 | 날짜 형태 검사를 더한다. 구체적인 날짜 요소가 없는 `date_text`는 앱이 `null`로 바꾼다 |
-| 취소된 일정 | 공지에 `cancelled` 필드를 더한다 |
+| 취소된 일정 | 공지에 취소 여부 필드를 더한다(실행 계획 작성 중 `status`로 확정, 4.3절) |
 | 개념·예제 | 창 초안이 아니라 노트 본문에서 쓴다 |
 | 판정 | 라틴 명령어 포착과 쉬는 시간 구간의 공지 미생성을 판정용 기대치에 더한다 |
 
@@ -28,7 +28,7 @@ v1 실측에서 한 번의 호출로 여러 섹션을 채우게 하자 내용이
 ```
 창(5분)마다, 녹음 중
   요점 호출  lecture-points-v1   → points 1~8
-  공지 호출  lecture-notices-v1  → notices 0~5 (cancelled 포함)
+  공지 호출  lecture-notices-v1  → notices 0~5 (status 포함)
   코드 호출  lecture-code-v1     → code 0~8
   앱 조립    lecture-draft-v2    = 창 범위 + 요점 + 공지 + 코드
 
@@ -47,7 +47,7 @@ v1 실측에서 한 번의 호출로 여러 섹션을 채우게 하자 내용이
 | 계약 | 필드 |
 | --- | --- |
 | `lecture-points-v1` | `schema_version`, `points`: 요점 `{content, source_refs}` 1~8개 |
-| `lecture-notices-v1` | `schema_version`, `notices`: `{kind, content, date_text, scope_text, cancelled, source_refs}` 0~5개. `kind`는 `exam`·`assignment`·`announcement`, `cancelled`는 참·거짓 |
+| `lecture-notices-v1` | `schema_version`, `notices`: `{kind, content, date_text, scope_text, status, source_refs}` 0~5개. `kind`는 `exam`·`assignment`·`announcement`, `status`는 `scheduled`·`cancelled` |
 | `lecture-code-v1` | `schema_version`, `code`: `{code, language, explanation, source_refs}` 0~8개. `language`는 `shell`·`c`·`python`·`other` |
 | `lecture-note-body-v1` | `schema_version`, `topic {content, source_refs}`, `concepts {name, explanation, source_refs}` 1~20개, `examples` 0~15개, `terms {term_ko, definition, term_en, source_refs}` 0~20개, `review` 0~10개 |
 
@@ -65,6 +65,15 @@ v1 실측에서 한 번의 호출로 여러 섹션을 채우게 하자 내용이
 | 원문 여부 | 코드가 인용 구간에 그대로 있으면 `from_transcript` 참, 영문 원어가 인용 구간에 있으면 `term_en_source: transcript` | (값 채움) |
 
 정리는 지우거나 비우기만 하고 새 값을 만들지 않는다. 한 초안 안의 공지·코드 반복도 조립 때 같은 규칙으로 합친다.
+
+### 4.3 실행 계획 작성 중 보완 (2026-09-26)
+
+1회 시험 실행에서 코드는 원문 그대로 잡혔고 모호한 기한도 비워졌지만 두 가지가 새로 나왔다. 둘 다 이 fixture에 맞춘 조정이 아니라 일반 규칙으로 보완했다.
+
+| 관찰 | 보완 |
+| --- | --- |
+| 취소된 퀴즈를 3건 모두 `cancelled: false`로 냈다. 원응답을 보니 llama-server는 스키마 순서와 상관없이 키를 알파벳 순서로 생성해, `cancelled`가 늘 `content`보다 먼저 정해졌다(순서를 바꿔 봐도 효과 없음) | 참·거짓 `cancelled`를 `status`(`scheduled`·`cancelled`)로 바꾼다. 알파벳 순서상 `content` 뒤에 오므로 모델이 "취소합니다"를 쓴 뒤 상태를 정한다 |
+| 명령어가 없는 창에서 "교착 상태", "상호 배제" 같은 개념 이름을 코드로 냈다 | 영문자·숫자가 하나도 없는 코드 항목은 앱이 지운다(`not_code_removed`). 명령어·코드는 라틴 문자로 쓰인다 |
 
 ## 5. 앱 구성
 
@@ -98,7 +107,7 @@ app/src-tauri/examples/lecture_contract_check.rs  호출 나누기에 맞춘 하
 | 판정 | 기준 |
 | --- | --- |
 | 채택 | 정리·재시도 후 모든 호출이 채택되고, 판정용 기대치가 5회 모두 통과 |
-| 판정용 기대치 | 잡담 제외, 시험 날짜·범위 원문 유지, 모호한 기한 `null`, 배점 미생성, 취소된 퀴즈를 인용한 공지는 모두 `cancelled: true`, 쉬는 시간 구간(s24)을 인용한 공지 없음, `chmod 755 run.sh`가 노트 코드에 원문 그대로 있음 |
+| 판정용 기대치 | 잡담 제외, 시험 날짜·범위 원문 유지, 모호한 기한 `null`, 배점 미생성, 취소된 퀴즈를 인용한 공지는 모두 `status: cancelled`, 쉬는 시간 구간(s24)을 인용한 공지 없음, `chmod 755 run.sh`가 노트 코드에 원문 그대로 있음 |
 | 참고 | 과제 포착, `gcc` 명령어 포착, 발음 명령어 복원 표시, 영문 원어 출처 표시, 섹션별 항목 수, 정리 종류별 횟수, 첫 시도 깨끗함·유효 비율 |
 | 시간 | 창 하나(세 호출 합)의 최대가 150초 이내인지, 녹음 종료 후 추정(2 × 최대 창 시간 + 5분 노트 본문 시간)이 300초 이내인지 회차별로 본다 |
 
@@ -109,7 +118,7 @@ app/src-tauri/examples/lecture_contract_check.rs  호출 나누기에 맞춘 하
 - 네 스키마와 타입의 필드 일치, 모든 배열의 `maxItems`, 필수 섹션의 `minItems`.
 - 호출별 검증: 잘림, 문법 오류, 중복 키, 추가·누락 필드, 앱이 정하는 필드를 모델이 쓴 경우, 출처 오류, 항목 수 초과, 필수 섹션 비움.
 - 날짜 형태: "10월 21일"·"다음 주 수요일"·"오전 10시"·"21일"은 남고, "다음 주쯤"·"잠깐"·"내일"·"게시판에 공지"는 비워진다.
-- `cancelled` 필드가 빠지면 거부한다.
+- `status` 필드가 빠지면 거부한다.
 - 조립: 초안 셋의 공지·코드 병합, 같은 공지·코드의 중복 제거와 기록, 창 범위 채움, 노트 본문과 합친 결과의 원문 여부 표시.
 - 기대치: 새 함정 두 개와 강화된 취소 기대치의 통과·실패 사례.
 
