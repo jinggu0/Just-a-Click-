@@ -8,7 +8,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::contract::{parse_transcript, Segment};
-use crate::lecture::{Code, Draft, Note, Notice, NoticeKind, Term, TermSource};
+use crate::lecture::{collapse, Code, Notice, NoticeKind, NoticeStatus, Term, TermSource};
+use crate::lecture_merge::{Draft, Note};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Fixture {
@@ -28,6 +29,8 @@ pub struct Traps {
     pub phonetic_command: String,
     pub spoken_english_term: SpokenTerm,
     pub unspoken_english_term: UnspokenTerm,
+    pub not_a_notice: Vec<String>,
+    pub second_latin_command: CodeTrap,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,22 +88,20 @@ fn cites(refs: &[String], id: &str) -> bool {
     refs.iter().any(|reference| reference == id)
 }
 
+/// Whether the window (or, for a note, the whole lecture) contains a segment.
+fn covers(window: Option<&[Segment]>, id: &str) -> bool {
+    window.map(|segments| segments.iter().any(|segment| segment.id == id)).unwrap_or(true)
+}
+
 /// A number followed by a score unit, or a word for a score, which the lecture never gives.
 fn mentions_points(text: &str) -> bool {
     if text.contains("배점") || text.contains("만점") || text.contains("퍼센트") {
         return true;
     }
-    let characters: Vec<char> = text.chars().collect();
-    characters.windows(2).any(|pair| {
-        pair[0].is_ascii_digit() && (pair[1] == '%' || pair[1] == '점')
-    }) || characters.windows(3).any(|triple| {
-        triple[0].is_ascii_digit() && triple[1] == ' ' && (triple[2] == '%' || triple[2] == '점')
-    })
-}
-
-/// Every source list in the answer, so chatter can be looked for in all of them.
-fn all_refs<'a>(lists: impl Iterator<Item = &'a Vec<String>>) -> Vec<&'a String> {
-    lists.flatten().collect()
+    let characters: Vec<char> = text.chars().filter(|character| *character != ' ').collect();
+    characters
+        .windows(2)
+        .any(|pair| pair[0].is_ascii_digit() && (pair[1] == '%' || pair[1] == '점'))
 }
 
 /// The notices that cite a given segment.
@@ -109,51 +110,54 @@ fn about<'a>(notices: &'a [Notice], id: &'a str) -> impl Iterator<Item = &'a Not
 }
 
 fn notice_checks(notices: &[Notice], traps: &Traps, window: Option<&[Segment]>) -> Vec<Expectation> {
-    let covers = |id: &str| window.map(|segments| segments.iter().any(|segment| segment.id == id)).unwrap_or(true);
-    let about = |id| about(notices, id);
-    let exam = covers(&traps.exam).then(|| {
-        about(&traps.exam).any(|notice| {
+    let exam = covers(window, &traps.exam).then(|| {
+        about(notices, &traps.exam).any(|notice| {
             notice.kind == NoticeKind::Exam && notice.date_text.is_some() && notice.scope_text.is_some()
         })
     });
-    let vague = covers(&traps.assignment).then(|| about(&traps.assignment).all(|notice| notice.date_text.is_none()));
-    let quiz = covers(&traps.cancelled_quiz)
-        .then(|| about(&traps.cancelled_quiz).all(|notice| notice.content.contains("취소")));
+    let vague = covers(window, &traps.assignment)
+        .then(|| about(notices, &traps.assignment).all(|notice| notice.date_text.is_none()));
+    let quiz = covers(window, &traps.cancelled_quiz)
+        .then(|| about(notices, &traps.cancelled_quiz).all(|notice| notice.status == NoticeStatus::Cancelled));
+    let breaks = traps.not_a_notice.iter().any(|id| covers(window, id)).then(|| {
+        !traps.not_a_notice.iter().any(|id| about(notices, id).next().is_some())
+    });
     let points = Some(!notices.iter().any(|notice| {
         mentions_points(&notice.content)
             || notice.date_text.as_deref().is_some_and(mentions_points)
             || notice.scope_text.as_deref().is_some_and(mentions_points)
     }));
-    let captured = covers(&traps.assignment).then(|| {
-        about(&traps.assignment).any(|notice| notice.kind == NoticeKind::Assignment)
-    });
+    let captured = covers(window, &traps.assignment)
+        .then(|| about(notices, &traps.assignment).any(|notice| notice.kind == NoticeKind::Assignment));
     vec![
         gate("exam_date_and_scope_kept", exam),
         gate("vague_deadline_left_null", vague),
-        gate("cancelled_quiz_not_announced", quiz),
+        gate("cancelled_quiz_marked_cancelled", quiz),
+        gate("no_notice_from_class_flow", breaks),
         gate("no_invented_points", points),
         reference("assignment_captured", captured),
     ]
 }
 
-fn code_checks(code: &[Code], traps: &Traps, window: Option<&[Segment]>) -> Vec<Expectation> {
-    let covered = window
-        .map(|segments| segments.iter().any(|segment| segment.id == traps.latin_command.segment))
-        .unwrap_or(true);
-    let latin = covered.then(|| {
-        code.iter().any(|item| {
-            item.from_transcript
-                && item.code.split_whitespace().collect::<Vec<_>>().join(" ") == traps.latin_command.code
-        })
-    });
+fn has_code(code: &[Code], wanted: &str) -> bool {
+    code.iter().any(|item| item.from_transcript && collapse(&item.code) == collapse(wanted))
+}
+
+/// Capturing the verbatim command decides adoption for a note; in a single draft it is only
+/// recorded, because a draft is not what the student reads.
+fn code_checks(code: &[Code], traps: &Traps, window: Option<&[Segment]>, decides: bool) -> Vec<Expectation> {
+    let latin = covers(window, &traps.latin_command.segment).then(|| has_code(code, &traps.latin_command.code));
+    let second = covers(window, &traps.second_latin_command.segment)
+        .then(|| has_code(code, &traps.second_latin_command.code));
     let phonetic: Vec<&Code> = code
         .iter()
         .filter(|item| cites(&item.source_refs, &traps.phonetic_command))
         .collect();
     vec![
-        reference("latin_command_verbatim", latin),
+        Expectation { name: "latin_command_captured", gating: decides, passed: latin },
+        reference("second_latin_command_captured", second),
         reference(
-            "phonetic_command_flagged",
+            "phonetic_command_marked_restored",
             (!phonetic.is_empty()).then(|| phonetic.iter().all(|item| !item.from_transcript)),
         ),
     ]
@@ -184,42 +188,39 @@ fn term_checks(terms: &[Term], traps: &Traps) -> Vec<Expectation> {
     ]
 }
 
-fn chatter_check(refs: &[&String], traps: &Traps) -> Expectation {
+fn chatter_check<'a>(mut refs: impl Iterator<Item = &'a String>, traps: &Traps) -> Expectation {
     gate(
         "chatter_excluded",
-        Some(!refs.iter().any(|id| traps.chatter.iter().any(|chatter| chatter == *id))),
+        Some(!refs.any(|id| traps.chatter.iter().any(|chatter| chatter == id))),
     )
 }
 
 pub fn check_draft(draft: &Draft, traps: &Traps, window: &[Segment]) -> Vec<Expectation> {
-    let refs = all_refs(
-        draft
-            .points
-            .iter()
-            .chain(&draft.examples)
-            .map(|item| &item.source_refs)
-            .chain(draft.concepts.iter().map(|concept| &concept.source_refs))
-            .chain(draft.code.iter().map(|item| &item.source_refs))
-            .chain(draft.notices.iter().map(|notice| &notice.source_refs)),
-    );
-    let mut checks = vec![chatter_check(&refs, traps)];
+    let refs = draft
+        .points
+        .iter()
+        .flat_map(|item| &item.source_refs)
+        .chain(draft.notices.iter().flat_map(|notice| &notice.source_refs))
+        .chain(draft.code.iter().flat_map(|item| &item.source_refs));
+    let mut checks = vec![chatter_check(refs, traps)];
     checks.extend(notice_checks(&draft.notices, traps, Some(window)));
-    checks.extend(code_checks(&draft.code, traps, Some(window)));
+    checks.extend(code_checks(&draft.code, traps, Some(window), false));
     checks
 }
 
 pub fn check_note(note: &Note, traps: &Traps) -> Vec<Expectation> {
-    let refs = all_refs(
-        std::iter::once(&note.topic.source_refs)
-            .chain(note.examples.iter().chain(&note.review).map(|item| &item.source_refs))
-            .chain(note.concepts.iter().map(|concept| &concept.source_refs))
-            .chain(note.terms.iter().map(|term| &term.source_refs))
-            .chain(note.code.iter().map(|item| &item.source_refs))
-            .chain(note.notices.iter().map(|notice| &notice.source_refs)),
-    );
-    let mut checks = vec![chatter_check(&refs, traps)];
+    let refs = note
+        .topic
+        .source_refs
+        .iter()
+        .chain(note.concepts.iter().flat_map(|concept| &concept.source_refs))
+        .chain(note.examples.iter().chain(&note.review).flat_map(|item| &item.source_refs))
+        .chain(note.terms.iter().flat_map(|term| &term.source_refs))
+        .chain(note.notices.iter().flat_map(|notice| &notice.source_refs))
+        .chain(note.code.iter().flat_map(|item| &item.source_refs));
+    let mut checks = vec![chatter_check(refs, traps)];
     checks.extend(notice_checks(&note.notices, traps, None));
-    checks.extend(code_checks(&note.code, traps, None));
+    checks.extend(code_checks(&note.code, traps, None, true));
     checks.extend(term_checks(&note.terms, traps));
     checks
 }
@@ -228,6 +229,7 @@ pub fn check_note(note: &Note, traps: &Traps) -> Vec<Expectation> {
 mod tests {
     use super::*;
     use crate::lecture::{Concept, Item, Language};
+    use crate::lecture_merge::Window;
 
     fn fixture() -> Fixture {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../evaluation/fixtures/lecture-synthetic-v1.json");
@@ -241,19 +243,30 @@ mod tests {
         }
     }
 
-    fn notice(kind: NoticeKind, content: &str, date: Option<&str>, scope: Option<&str>, refs: &[&str]) -> Notice {
+    fn notice(kind: NoticeKind, content: &str, date: Option<&str>, scope: Option<&str>, cancelled: bool, refs: &[&str]) -> Notice {
+        let status = if cancelled { NoticeStatus::Cancelled } else { NoticeStatus::Scheduled };
         Notice {
             kind,
             content: content.to_string(),
             date_text: date.map(str::to_string),
             scope_text: scope.map(str::to_string),
+            status,
+            source_refs: refs.iter().map(|id| id.to_string()).collect(),
+        }
+    }
+
+    fn code(text: &str, from_transcript: bool, refs: &[&str]) -> Code {
+        Code {
+            code: text.into(),
+            language: Language::Shell,
+            explanation: "설명".into(),
+            from_transcript,
             source_refs: refs.iter().map(|id| id.to_string()).collect(),
         }
     }
 
     fn good_note() -> Note {
         Note {
-            schema_version: "lecture-note-v1".into(),
             topic: item("교착 상태", &["s1"]),
             concepts: vec![Concept {
                 name: "교착 상태".into(),
@@ -278,25 +291,14 @@ mod tests {
                 },
             ],
             notices: vec![
-                notice(NoticeKind::Exam, "중간고사", Some("10월 21일 화요일 오전 10시"), Some("3장부터 5장까지"), &["s9"]),
-                notice(NoticeKind::Assignment, "은행원 알고리즘 구현", None, None, &["s22", "s23"]),
-                notice(NoticeKind::Announcement, "퀴즈는 취소되었다", None, None, &["s21"]),
+                notice(NoticeKind::Exam, "중간고사", Some("10월 21일 화요일 오전 10시"), Some("3장부터 5장까지"), false, &["s9"]),
+                notice(NoticeKind::Assignment, "은행원 알고리즘 구현", None, None, false, &["s22", "s23"]),
+                notice(NoticeKind::Exam, "퀴즈 취소", None, None, true, &["s21"]),
             ],
             code: vec![
-                Code {
-                    code: "chmod 755 run.sh".into(),
-                    language: Language::Shell,
-                    explanation: "실행 권한".into(),
-                    from_transcript: true,
-                    source_refs: vec!["s25".into()],
-                },
-                Code {
-                    code: "ps aux | grep banker".into(),
-                    language: Language::Shell,
-                    explanation: "프로세스 찾기".into(),
-                    from_transcript: false,
-                    source_refs: vec!["s27".into()],
-                },
+                code("chmod 755 run.sh", true, &["s25"]),
+                code("gcc -o banker banker.c", true, &["s26"]),
+                code("ps aux | grep banker", false, &["s27"]),
             ],
             review: vec![item("교착 상태의 네 조건", &["s33"])],
         }
@@ -311,15 +313,20 @@ mod tests {
     }
 
     #[test]
-    fn the_fixture_has_three_windows_of_twelve_segments() {
+    fn the_fixture_has_three_windows_and_every_trap_points_at_a_segment() {
         let fixture = fixture();
         assert_eq!(fixture.windows.len(), 3);
         for index in 0..3 {
             assert_eq!(fixture.window(index).expect("window").len(), 12);
         }
-        assert_eq!(fixture.all_segments().expect("segments").len(), 36);
         let all = fixture.all_segments().expect("segments");
-        for id in [&fixture.traps.exam, &fixture.traps.assignment, &fixture.traps.cancelled_quiz] {
+        assert_eq!(all.len(), 36);
+        let traps = &fixture.traps;
+        let mut ids = vec![&traps.exam, &traps.assignment, &traps.cancelled_quiz, &traps.phonetic_command];
+        ids.extend(traps.chatter.iter().chain(&traps.not_a_notice));
+        ids.push(&traps.latin_command.segment);
+        ids.push(&traps.second_latin_command.segment);
+        for id in ids {
             assert!(all.iter().any(|segment| &segment.id == id), "{id} missing");
         }
     }
@@ -338,9 +345,11 @@ mod tests {
         let mut note = good_note();
         note.notices[0].date_text = None;
         note.notices[1].date_text = Some("다음 주쯤".into());
-        note.notices[2] = notice(NoticeKind::Exam, "다음 주 수요일 퀴즈", Some("다음 주 수요일"), None, &["s21"]);
-        note.notices.push(notice(NoticeKind::Assignment, "과제 배점 20점", None, None, &["s22"]));
+        note.notices[2].status = NoticeStatus::Scheduled;
+        note.notices.push(notice(NoticeKind::Assignment, "과제 배점 20점", None, None, false, &["s22"]));
+        note.notices.push(notice(NoticeKind::Assignment, "실습실로 이동", None, None, false, &["s24"]));
         note.review.push(item("점심 메뉴", &["s4"]));
+        note.code.remove(0);
         note.code[1].from_transcript = true;
         note.terms[1].term_en_source = Some(TermSource::Transcript);
         assert_eq!(
@@ -349,31 +358,31 @@ mod tests {
                 "chatter_excluded",
                 "exam_date_and_scope_kept",
                 "vague_deadline_left_null",
-                "cancelled_quiz_not_announced",
+                "cancelled_quiz_marked_cancelled",
+                "no_notice_from_class_flow",
                 "no_invented_points",
-                "phonetic_command_flagged",
+                "latin_command_captured",
+                "phonetic_command_marked_restored",
                 "unspoken_english_marked_model",
             ]
         );
     }
 
     #[test]
-    fn draft_checks_skip_traps_outside_the_window() {
+    fn draft_checks_skip_traps_outside_the_window_and_only_record_code() {
         let fixture = fixture();
         let window = fixture.window(2).expect("window");
         let draft = Draft {
-            schema_version: "lecture-draft-v1".into(),
-            window: crate::lecture::Window { first: "s25".into(), last: "s36".into() },
+            window: Window { first: "s25".into(), last: "s36".into() },
             points: vec![item("실습 준비", &["s25"])],
-            concepts: vec![],
-            examples: vec![],
-            code: vec![],
             notices: vec![],
+            code: vec![],
         };
         let checks = check_draft(&draft, &fixture.traps, &window);
-        let exam = checks.iter().find(|check| check.name == "exam_date_and_scope_kept").unwrap();
-        assert_eq!(exam.passed, None, "the exam is announced in the first window");
-        assert!(failed(&checks).contains(&"latin_command_verbatim"));
+        let find = |name: &str| checks.iter().find(|check| check.name == name).unwrap().clone();
+        assert_eq!(find("exam_date_and_scope_kept").passed, None, "the exam is in the first window");
+        assert_eq!(find("latin_command_captured").passed, Some(false));
+        assert!(!find("latin_command_captured").gating, "a draft only records code capture");
     }
 
     #[test]

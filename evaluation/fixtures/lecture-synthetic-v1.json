@@ -55,6 +55,9 @@
     "latin_command": {"segment": "s25", "code": "chmod 755 run.sh"},
     "phonetic_command": "s27",
     "spoken_english_term": {"segment": "s1", "term_en": "deadlock"},
-    "unspoken_english_term": {"segment": "s18", "term_ko": "세마포어"}
-  }
+    "unspoken_english_term": {"segment": "s18", "term_ko": "세마포어"},
+    "not_a_notice": ["s24"],
+    "second_latin_command": {"segment": "s26", "code": "gcc -o banker banker.c"}
+  },
+  "trap_history": "not_a_notice and second_latin_command were added on 2026-09-26 after the contract v1 measurement showed a notice invented from s24 and no code captured. The transcript is unchanged."
 }

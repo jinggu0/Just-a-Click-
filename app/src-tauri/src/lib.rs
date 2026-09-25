@@ -5,6 +5,7 @@ pub mod contract;
 pub mod convert;
 pub mod inference;
 pub mod lecture;
+pub mod lecture_fixture;
 pub mod lecture_merge;
 pub mod llm;
 pub mod power;
