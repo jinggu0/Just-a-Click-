@@ -18,7 +18,9 @@ $counters = @(
   '\Process(whisper-cli*)\% Processor Time',
   '\Process(llama-server*)\% Processor Time',
   '\Process(explorer*)\% Processor Time',
-  '\Process(searchindexer*)\% Processor Time'
+  '\Process(searchindexer*)\% Processor Time',
+  '\Process(onedrive*)\% Processor Time',
+  '\Process(vmware-vmx*)\% Processor Time'
 )
 
 if (-not (Test-Path $Csv)) { 'timestamp,counter,value' | Out-File -Encoding utf8 $Csv }
