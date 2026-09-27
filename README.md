@@ -22,5 +22,6 @@
 - [강의 노트 출력 계약 실측](docs/validation/2026-09-26-lecture-contract.md)
 - [강의 계약 v2 실측: 작업 나누기](docs/validation/2026-09-26-lecture-contract-v2.md)
 - [강의 계약 v2 시간 재측정](docs/validation/2026-09-26-lecture-contract-timing.md)
+- [강의 계약 v2 시간 재측정 2: 배경 부하 제거](docs/validation/2026-09-27-lecture-contract-timing-2.md)
 - [에이전트 작업 지침](AGENTS.md)
 - [Claude 작업 지침](CLAUDE.md)
