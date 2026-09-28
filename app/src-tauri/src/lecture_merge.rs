@@ -278,13 +278,23 @@ pub fn merge_precise(windows: Vec<Accepted<PreciseWindow>>, segments: &[Segment]
     Accepted { value: body, repairs }
 }
 
-/// What the synthesis call reads: one merged concept per line with its sources.
+/// Room the chat template takes around the system and user text.
+pub const TEMPLATE_TOKENS: usize = 64;
+
+/// What the synthesis call reads: one merged concept per line, its name and sources only.
+/// Explanations would make a long lecture's list outgrow the context (about 53 tokens a
+/// concept against 11).
 pub fn synthesis_input(body: &PreciseBody) -> String {
     body.concepts
         .iter()
-        .map(|concept| format!("- {} [{}]: {}", concept.name, concept.source_refs.join(", "), concept.explanation))
+        .map(|concept| format!("- {} [{}]", concept.name, concept.source_refs.join(", ")))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Whether a request of `prompt_tokens` can still produce `max_tokens` within the context.
+pub fn fits_context(prompt_tokens: usize, max_tokens: u32, context_tokens: u32) -> bool {
+    prompt_tokens + TEMPLATE_TOKENS + max_tokens as usize <= context_tokens as usize
 }
 
 /// The segments the merged body cites, in transcript order: all the synthesis may quote.
@@ -592,9 +602,24 @@ mod tests {
         first.repairs.push(Repair { path: "$.examples[1]".into(), kind: "repeat_removed", detail: String::new() });
         let merged = merge_precise(vec![first, precise(vec![], vec![], vec![])], &lecture());
         assert_eq!(merged.repairs[0].path, "window1:$.examples[1]");
-        assert_eq!(synthesis_input(&merged.value), "- 교착 상태 [s1]: 멈춘 상태");
+        assert_eq!(synthesis_input(&merged.value), "- 교착 상태 [s1]");
         let cited: Vec<String> = cited_by(&merged.value, &lecture()).into_iter().map(|segment| segment.id).collect();
         assert_eq!(cited, refs(&["s1", "s2"]));
+    }
+
+    #[test]
+    fn the_synthesis_input_fits_when_prompt_output_and_template_fit_the_context() {
+        assert!(fits_context(6_080, 2_048, 8_192));
+        assert!(!fits_context(6_081, 2_048, 8_192));
+        let body = PreciseBody {
+            concepts: vec![
+                concept("교착 상태", "서로 기다리며 멈춘 상태", &["s1", "s13"]),
+                concept("세마포어", "정수와 두 연산", &["s18"]),
+            ],
+            examples: vec![],
+            terms: vec![],
+        };
+        assert_eq!(synthesis_input(&body), "- 교착 상태 [s1, s13]\n- 세마포어 [s18]");
     }
 
     #[test]
