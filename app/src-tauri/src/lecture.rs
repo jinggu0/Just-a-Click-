@@ -577,6 +577,23 @@ mod tests {
         })
     }
 
+    fn precise_window() -> Value {
+        json!({
+            "schema_version": "lecture-precise-window-v1",
+            "concepts": [{"name": "교착 상태", "explanation": "서로의 자원을 기다리며 멈춘 상태", "source_refs": ["s1"]}],
+            "examples": [{"content": "두 프로세스가 서로의 자원을 기다리는 예", "source_refs": ["s1"]}],
+            "terms": [{"term_ko": "교착 상태", "definition": "서로 기다리며 멈춘 상태", "term_en": "Deadlock", "source_refs": ["s1"]}]
+        })
+    }
+
+    fn synthesis() -> Value {
+        json!({
+            "schema_version": "lecture-precise-synthesis-v1",
+            "topic": {"content": "교착 상태", "source_refs": ["s1"]},
+            "review": [{"content": "교착 상태의 조건을 복습한다", "source_refs": ["s1"]}]
+        })
+    }
+
     fn rules<T: std::fmt::Debug>(result: Result<T, Vec<Violation>>) -> Vec<&'static str> {
         match result {
             Ok(value) => panic!("expected violations, got {value:?}"),
@@ -760,8 +777,8 @@ mod tests {
             .iter()
             .map(|schema| serde_json::from_str(schema).expect("schema"))
             .collect();
-        let [points_schema, notices_schema, code_schema, body_schema] = &schemas[..] else {
-            panic!("four schemas expected");
+        let [points_schema, notices_schema, code_schema, body_schema, window_schema, synthesis_schema] = &schemas[..] else {
+            panic!("six schemas expected");
         };
         assert_eq!(required(points_schema, "/required"), keys(&points()));
         assert_eq!(required(notices_schema, "/required"), keys(&notices()));
@@ -781,6 +798,17 @@ mod tests {
         }
         assert_eq!(points_schema["properties"]["points"]["minItems"], json!(1));
         assert_eq!(body_schema["properties"]["concepts"]["minItems"], json!(1));
+        assert_eq!(required(window_schema, "/required"), keys(&precise_window()));
+        assert_eq!(required(synthesis_schema, "/required"), keys(&synthesis()));
+        assert_eq!(required(window_schema, "/$defs/concept/required"), keys(&precise_window()["concepts"][0]));
+        assert_eq!(required(window_schema, "/$defs/item/required"), keys(&precise_window()["examples"][0]));
+        assert_eq!(required(window_schema, "/$defs/term/required"), keys(&precise_window()["terms"][0]));
+        assert_eq!(required(synthesis_schema, "/$defs/item/required"), keys(&synthesis()["topic"]));
+        assert_eq!(window_schema["properties"]["concepts"]["maxItems"], json!(8));
+        assert_eq!(window_schema["properties"]["examples"]["maxItems"], json!(6));
+        assert_eq!(window_schema["properties"]["terms"]["maxItems"], json!(10));
+        assert!(window_schema["properties"]["concepts"].get("minItems").is_none(), "a window may have no concepts");
+        assert_eq!(synthesis_schema["properties"]["review"]["maxItems"], json!(10));
     }
 
     #[test]
