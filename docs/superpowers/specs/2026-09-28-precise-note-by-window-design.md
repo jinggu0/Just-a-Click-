@@ -1,7 +1,7 @@
 # 정밀 정리 설계: 창별로 읽고 앱이 합치기
 
 - 날짜: 2026-09-28
-- 상태: 사용자 승인 설계. 구현·검증 전
+- 상태: 사용자 승인 설계. 구현·검증 완료, 채택([실측](../../validation/2026-09-28-precise-note-by-window.md))
 - 대상: [결정 0010](../../decisions/0010-lecture-note-contract.md) v2의 정밀 정리 경로, [0006](../../decisions/0006-lecture-first-product-scope.md)의 정밀 정리(SUM-07)
 - 근거: [시간 재측정](../../validation/2026-09-26-lecture-contract-timing.md), [시간 재측정 2](../../validation/2026-09-27-lecture-contract-timing-2.md)
 
