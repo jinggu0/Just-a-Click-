@@ -2,10 +2,18 @@
 //! code, and the note from its body plus the notices and code of every draft.
 //!
 //! Merging only drops duplicates; it never rewrites an item. Every dropped item is recorded.
+//!
+//! The precise note is read one window at a time; its lists are merged here by name, and a
+//! last call writes only the topic and the review over the merged concepts.
+use std::collections::BTreeSet;
+
 use serde::Serialize;
 
 use crate::contract::Segment;
-use crate::lecture::{collapse, Accepted, Code, Concept, Item, Notice, NoteBody, Repair, Term};
+use crate::lecture::{
+    collapse, english_source, Accepted, Code, Concept, Item, Notice, NoteBody, PreciseSynthesis, PreciseWindow, Repair,
+    Term,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Window {
@@ -32,6 +40,15 @@ pub struct Note {
     pub notices: Vec<Notice>,
     pub code: Vec<Code>,
     pub review: Vec<Item>,
+}
+
+/// The precise note before its topic and review: every window's lists in order, with equal
+/// names merged.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct PreciseBody {
+    pub concepts: Vec<Concept>,
+    pub examples: Vec<Item>,
+    pub terms: Vec<Term>,
 }
 
 fn overlaps(left: &[String], right: &[String]) -> bool {
@@ -116,17 +133,21 @@ pub fn assemble_draft(
     }
 }
 
-/// The note: the body as written, then every draft's notices and code with duplicates
-/// across windows dropped.
-pub fn assemble_note(body: Accepted<NoteBody>, drafts: &[Draft]) -> Accepted<Note> {
+/// Every draft's notices and code with duplicates across windows dropped.
+fn gathered(drafts: &[Draft]) -> (Vec<Notice>, Vec<Code>, Vec<Repair>) {
     let notices: Vec<Notice> = drafts.iter().flat_map(|draft| draft.notices.clone()).collect();
     let code: Vec<Code> = drafts.iter().flat_map(|draft| draft.code.clone()).collect();
     let (notices, notice_repairs) = merge_notices(notices, "$.notices");
     let (code, code_repairs) = merge_code(code, "$.code");
-    let repairs = tagged("body", body.repairs)
-        .chain(tagged("note", notice_repairs))
-        .chain(tagged("note", code_repairs))
-        .collect();
+    let repairs = tagged("note", notice_repairs).chain(tagged("note", code_repairs)).collect();
+    (notices, code, repairs)
+}
+
+/// The note: the body as written, then every draft's notices and code with duplicates
+/// across windows dropped.
+pub fn assemble_note(body: Accepted<NoteBody>, drafts: &[Draft]) -> Accepted<Note> {
+    let (notices, code, note_repairs) = gathered(drafts);
+    let repairs = tagged("body", body.repairs).chain(note_repairs).collect();
     let body = body.value;
     Accepted {
         value: Note {
@@ -142,11 +163,149 @@ pub fn assemble_note(body: Accepted<NoteBody>, drafts: &[Draft]) -> Accepted<Not
     }
 }
 
+const TRAILING_PUNCTUATION: [char; 7] = ['.', ',', '!', '?', ':', ';', '。'];
+
+/// Names compare equal once spacing is collapsed, trailing punctuation dropped and Latin
+/// letters lowercased. Different wording ("안전 상태", "안전한 상태") stays different.
+pub fn name_key(name: &str) -> String {
+    collapse(name)
+        .trim_end_matches(&TRAILING_PUNCTUATION[..])
+        .trim_end()
+        .to_lowercase()
+}
+
+fn union(into: &mut Vec<String>, refs: &[String]) {
+    for id in refs {
+        if !into.contains(id) {
+            into.push(id.clone());
+        }
+    }
+}
+
+/// Adds `text` after `into` unless `into` already says it, spacing aside. Both sentences
+/// passed their own call's checks; nothing new is written.
+fn append(into: &mut String, text: &str) -> bool {
+    if collapse(into).contains(&collapse(text)) {
+        return false;
+    }
+    into.push(' ');
+    into.push_str(text.trim());
+    true
+}
+
+fn merged(stage: &str, list: &str, position: usize, kind: &'static str, first: usize, appended: bool) -> Repair {
+    let detail = if appended {
+        format!("merged into kept item {first}, text appended")
+    } else {
+        format!("merged into kept item {first}")
+    };
+    Repair { path: format!("{stage}:$.{list}[{position}]"), kind, detail }
+}
+
+/// Joins the windows of the precise note in order. Concepts and terms with the same name and
+/// identical examples become one item with the sources of all.
+pub fn merge_precise(windows: Vec<Accepted<PreciseWindow>>, segments: &[Segment]) -> Accepted<PreciseBody> {
+    let mut body = PreciseBody::default();
+    let mut repairs = Vec::new();
+    for (index, window) in windows.into_iter().enumerate() {
+        let stage = format!("window{}", index + 1);
+        repairs.extend(tagged(&stage, window.repairs));
+        let value = window.value;
+        for (position, concept) in value.concepts.into_iter().enumerate() {
+            match body.concepts.iter().position(|kept| name_key(&kept.name) == name_key(&concept.name)) {
+                Some(first) => {
+                    let kept = &mut body.concepts[first];
+                    let appended = append(&mut kept.explanation, &concept.explanation);
+                    union(&mut kept.source_refs, &concept.source_refs);
+                    repairs.push(merged(&stage, "concepts", position, "concept_merged", first, appended));
+                }
+                None => body.concepts.push(concept),
+            }
+        }
+        for (position, example) in value.examples.into_iter().enumerate() {
+            match body.examples.iter().position(|kept| collapse(&kept.content) == collapse(&example.content)) {
+                Some(first) => {
+                    union(&mut body.examples[first].source_refs, &example.source_refs);
+                    repairs.push(merged(&stage, "examples", position, "example_merged", first, false));
+                }
+                None => body.examples.push(example),
+            }
+        }
+        for (position, term) in value.terms.into_iter().enumerate() {
+            match body.terms.iter().position(|kept| name_key(&kept.term_ko) == name_key(&term.term_ko)) {
+                Some(first) => {
+                    let kept = &mut body.terms[first];
+                    let appended = append(&mut kept.definition, &term.definition);
+                    if kept.term_en.is_none() {
+                        kept.term_en = term.term_en;
+                    }
+                    union(&mut kept.source_refs, &term.source_refs);
+                    repairs.push(merged(&stage, "terms", position, "term_merged", first, appended));
+                }
+                None => body.terms.push(term),
+            }
+        }
+    }
+    for term in &mut body.terms {
+        term.term_en_source = english_source(segments, term);
+    }
+    Accepted { value: body, repairs }
+}
+
+/// What the synthesis call reads: one merged concept per line with its sources.
+pub fn synthesis_input(body: &PreciseBody) -> String {
+    body.concepts
+        .iter()
+        .map(|concept| format!("- {} [{}]: {}", concept.name, concept.source_refs.join(", "), concept.explanation))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The segments the merged body cites, in transcript order: all the synthesis may quote.
+pub fn cited_by(body: &PreciseBody, all: &[Segment]) -> Vec<Segment> {
+    let cited: BTreeSet<&String> = body
+        .concepts
+        .iter()
+        .flat_map(|concept| &concept.source_refs)
+        .chain(body.examples.iter().flat_map(|item| &item.source_refs))
+        .chain(body.terms.iter().flat_map(|term| &term.source_refs))
+        .collect();
+    all.iter().filter(|segment| cited.contains(&segment.id)).cloned().collect()
+}
+
+/// The precise note: merged windows, the synthesis's topic and review, and the drafts'
+/// notices and code.
+pub fn assemble_precise_note(
+    body: Accepted<PreciseBody>,
+    synthesis: Accepted<PreciseSynthesis>,
+    drafts: &[Draft],
+) -> Accepted<Note> {
+    let (notices, code, note_repairs) = gathered(drafts);
+    let repairs = body
+        .repairs
+        .into_iter()
+        .chain(tagged("synthesis", synthesis.repairs))
+        .chain(note_repairs)
+        .collect();
+    Accepted {
+        value: Note {
+            topic: synthesis.value.topic,
+            concepts: body.value.concepts,
+            examples: body.value.examples,
+            terms: body.value.terms,
+            notices,
+            code,
+            review: synthesis.value.review,
+        },
+        repairs,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::contract::parse_transcript;
-    use crate::lecture::{Language, NoticeKind, NoticeStatus};
+    use crate::lecture::{Language, NoticeKind, NoticeStatus, PreciseSynthesis, PreciseWindow, TermSource};
 
     fn notice(kind: NoticeKind, content: &str, date: Option<&str>, refs: &[&str]) -> Notice {
         Notice {
@@ -250,6 +409,156 @@ mod tests {
             review: vec![],
         };
         let note = assemble_note(accepted(body), &[first, second]);
+        assert_eq!(note.value.notices.len(), 2);
+        assert_eq!(note.value.code.len(), 1);
+        assert_eq!(kinds(&note.repairs), vec!["notice_merged"]);
+        assert_eq!(note.repairs[0].path, "note:$.notices[1]");
+    }
+
+    fn refs(ids: &[&str]) -> Vec<String> {
+        ids.iter().map(|id| id.to_string()).collect()
+    }
+
+    fn concept(name: &str, explanation: &str, ids: &[&str]) -> Concept {
+        Concept { name: name.into(), explanation: explanation.into(), source_refs: refs(ids) }
+    }
+
+    fn item(content: &str, ids: &[&str]) -> Item {
+        Item { content: content.into(), source_refs: refs(ids) }
+    }
+
+    fn term(korean: &str, definition: &str, english: Option<&str>, ids: &[&str]) -> Term {
+        Term {
+            term_ko: korean.into(),
+            definition: definition.into(),
+            term_en: english.map(str::to_string),
+            term_en_source: None,
+            source_refs: refs(ids),
+        }
+    }
+
+    fn precise(concepts: Vec<Concept>, examples: Vec<Item>, terms: Vec<Term>) -> Accepted<PreciseWindow> {
+        accepted(PreciseWindow { schema_version: "lecture-precise-window-v1".into(), concepts, examples, terms })
+    }
+
+    fn lecture() -> Vec<Segment> {
+        parse_transcript(
+            "[s1 00:00] 교착 상태, 영어로 deadlock\n[s2 00:20] 은행원 알고리즘\n\
+             [s13 05:00] 교착 상태를 다시 봅니다\n[s14 05:20] 안전 상태",
+        )
+        .expect("segments")
+    }
+
+    #[test]
+    fn names_match_once_spacing_trailing_punctuation_and_case_are_ignored() {
+        assert_eq!(name_key(" 교착  상태. "), name_key("교착 상태"));
+        assert_eq!(name_key("Banker's Algorithm"), name_key("banker's algorithm"));
+        assert_ne!(name_key("안전 상태"), name_key("안전한 상태"));
+    }
+
+    #[test]
+    fn concepts_with_the_same_name_are_merged_keeping_both_explanations() {
+        let first = precise(
+            vec![concept("교착 상태", "서로 기다리며 멈춘 상태", &["s1"]), concept("은행원 알고리즘", "안전 상태를 지키는 방법", &["s2"])],
+            vec![],
+            vec![],
+        );
+        let second = precise(
+            vec![
+                concept("교착 상태.", "서로 기다리며  멈춘 상태", &["s13"]),
+                concept("교착 상태", "네 조건이 모두 성립할 때 생긴다", &["s13"]),
+                concept("안전 상태", "모두 끝낼 수 있는 순서가 있는 상태", &["s14"]),
+            ],
+            vec![],
+            vec![],
+        );
+        let merged = merge_precise(vec![first, second], &lecture());
+        let concepts = &merged.value.concepts;
+        assert_eq!(concepts.len(), 3);
+        assert_eq!(concepts[0].explanation, "서로 기다리며 멈춘 상태 네 조건이 모두 성립할 때 생긴다");
+        assert_eq!(concepts[0].source_refs, refs(&["s1", "s13"]));
+        assert_eq!(kinds(&merged.repairs), vec!["concept_merged", "concept_merged"]);
+        assert_eq!(merged.repairs[0].path, "window2:$.concepts[0]");
+        assert_eq!(merged.repairs[1].path, "window2:$.concepts[1]");
+    }
+
+    #[test]
+    fn terms_merge_like_concepts_and_the_english_source_is_recomputed() {
+        let merged = merge_precise(
+            vec![
+                precise(vec![], vec![], vec![term("교착 상태", "서로 기다리며 멈춘 상태", None, &["s13"])]),
+                precise(vec![], vec![], vec![term("교착 상태", "자원을 서로 기다리는 상태", Some("deadlock"), &["s1"])]),
+                precise(vec![], vec![], vec![term("교착 상태", "서로 기다리며 멈춘 상태", Some("Impasse"), &["s13"])]),
+            ],
+            &lecture(),
+        );
+        let terms = &merged.value.terms;
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].definition, "서로 기다리며 멈춘 상태 자원을 서로 기다리는 상태");
+        assert_eq!(terms[0].term_en.as_deref(), Some("deadlock"));
+        assert_eq!(terms[0].term_en_source, Some(TermSource::Transcript));
+        assert_eq!(terms[0].source_refs, refs(&["s13", "s1"]));
+        assert_eq!(kinds(&merged.repairs), vec!["term_merged", "term_merged"]);
+    }
+
+    #[test]
+    fn identical_examples_across_windows_are_merged() {
+        let merged = merge_precise(
+            vec![
+                precise(vec![], vec![item("프린터와 스캐너를 서로 기다리는 예", &["s1"])], vec![]),
+                precise(
+                    vec![],
+                    vec![item("프린터와  스캐너를 서로 기다리는 예", &["s13"]), item("철학자 예", &["s14"])],
+                    vec![],
+                ),
+            ],
+            &lecture(),
+        );
+        assert_eq!(merged.value.examples.len(), 2);
+        assert_eq!(merged.value.examples[0].source_refs, refs(&["s1", "s13"]));
+        assert_eq!(kinds(&merged.repairs), vec!["example_merged"]);
+    }
+
+    #[test]
+    fn window_repairs_keep_their_window_and_the_synthesis_reads_the_merged_concepts() {
+        let mut first = precise(vec![concept("교착 상태", "멈춘 상태", &["s1"])], vec![item("예", &["s2"])], vec![]);
+        first.repairs.push(Repair { path: "$.examples[1]".into(), kind: "repeat_removed", detail: String::new() });
+        let merged = merge_precise(vec![first, precise(vec![], vec![], vec![])], &lecture());
+        assert_eq!(merged.repairs[0].path, "window1:$.examples[1]");
+        assert_eq!(synthesis_input(&merged.value), "- 교착 상태 [s1]: 멈춘 상태");
+        let cited: Vec<String> = cited_by(&merged.value, &lecture()).into_iter().map(|segment| segment.id).collect();
+        assert_eq!(cited, refs(&["s1", "s2"]));
+    }
+
+    #[test]
+    fn a_precise_note_takes_topic_and_review_from_the_synthesis_and_notices_from_the_drafts() {
+        let body = merge_precise(vec![precise(vec![concept("교착 상태", "멈춘 상태", &["s1"])], vec![], vec![])], &lecture());
+        let synthesis = accepted(PreciseSynthesis {
+            schema_version: "lecture-precise-synthesis-v1".into(),
+            topic: item("교착 상태", &["s1"]),
+            review: vec![item("네 조건을 복습한다", &["s1"])],
+        });
+        let drafts = [
+            Draft {
+                window: Window { first: "s1".into(), last: "s12".into() },
+                points: vec![],
+                notices: vec![notice(NoticeKind::Exam, "중간고사", Some("10월 21일"), &["s9"])],
+                code: vec![],
+            },
+            Draft {
+                window: Window { first: "s13".into(), last: "s24".into() },
+                points: vec![],
+                notices: vec![
+                    notice(NoticeKind::Exam, "중간고사", Some("10월 21일"), &["s9"]),
+                    notice(NoticeKind::Assignment, "은행원 알고리즘 구현", None, &["s22"]),
+                ],
+                code: vec![code("chmod 755 run.sh", true)],
+            },
+        ];
+        let note = assemble_precise_note(body, synthesis, &drafts);
+        assert_eq!(note.value.topic.content, "교착 상태");
+        assert_eq!(note.value.review.len(), 1);
+        assert_eq!(note.value.concepts.len(), 1);
         assert_eq!(note.value.notices.len(), 2);
         assert_eq!(note.value.code.len(), 1);
         assert_eq!(kinds(&note.repairs), vec!["notice_merged"]);
