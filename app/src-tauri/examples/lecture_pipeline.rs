@@ -11,6 +11,10 @@
 //!
 //! The course name is read from `<out dir>/course.txt` before every call, so it can be given
 //! after the recording has started. Audio, transcript and notes stay under `<out dir>`.
+//!
+//! With `--from <chunk dir>` it replays chunks an earlier run recorded instead of recording.
+//! Chunks too short or silent to transcribe are left out, and a last window of one or two
+//! segments is read with the window before it for the precise note.
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
@@ -27,13 +31,14 @@ use app_lib::lecture::{
 };
 use app_lib::lecture_merge::{
     assemble_draft, assemble_note, assemble_precise_note, cited_by, fitting_synthesis_input, merge_precise,
-    precise_checklist, Draft, Fitting,
+    precise_checklist, precise_groups, Draft, Fitting,
 };
 use app_lib::llm::{complete_json, count_tokens, stream_draft, Completion, Server, ServerSettings};
 use app_lib::power::KeepAwake;
 use app_lib::process::ProcessGroup;
 use app_lib::recorder::Recorder;
 use app_lib::stt::{self, TranscribeSettings};
+use app_lib::wav::read_samples;
 use serde::Serialize;
 
 const CHUNK_SECONDS: usize = 30;
@@ -190,7 +195,7 @@ struct Pipeline {
     started: Instant,
     segments: Vec<Segment>,
     transcribed: Vec<Transcribed>,
-    skipped_chunks: Vec<usize>,
+    skipped_chunks: Vec<serde_json::Value>,
     windows: Vec<Vec<Segment>>,
     drafts: Vec<Draft>,
     draft_records: Vec<serde_json::Value>,
@@ -216,6 +221,13 @@ impl Pipeline {
                 output: self.text_dir.join(format!("chunk-{number:04}")),
                 threads: 8,
             };
+            let screened = stt::screen(&read_samples(&settings.chunk)?);
+            if screened != stt::Screen::Transcribe {
+                println!("{:>7.1}s chunk {number} left out: {screened:?}", self.at());
+                self.skipped_chunks.push(serde_json::json!({"chunk": number, "reason": screened}));
+                self.next_chunk += 1;
+                continue;
+            }
             let begun = Instant::now();
             let text = match stt::run(&self.group, &settings, &AtomicBool::new(false))? {
                 stt::Outcome::Text(text) => text.split_whitespace().collect::<Vec<_>>().join(" "),
@@ -223,7 +235,7 @@ impl Pipeline {
             };
             let seconds = begun.elapsed().as_secs_f64();
             if text.is_empty() {
-                self.skipped_chunks.push(number);
+                self.skipped_chunks.push(serde_json::json!({"chunk": number, "reason": "empty_transcript"}));
             } else {
                 self.next_segment += 1;
                 let segment = Segment {
@@ -312,12 +324,19 @@ impl Pipeline {
 fn main() -> Result<(), String> {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     if arguments.len() < 3 {
-        return Err("usage: lecture_pipeline <repository root> <out dir> <seconds>".into());
+        return Err("usage: lecture_pipeline <repository root> <out dir> <seconds> [--from <chunk dir>]".into());
     }
     let root = PathBuf::from(&arguments[0]);
     let out_dir = PathBuf::from(&arguments[1]);
     let limit: f64 = arguments[2].parse().map_err(|_| "seconds must be a number")?;
-    let audio_dir = out_dir.join("audio");
+    // Replay: process chunks an earlier run recorded instead of recording. Timings then say
+    // nothing about the after-recording target; the notes can be compared with that run.
+    let replay = arguments
+        .iter()
+        .position(|argument| argument == "--from")
+        .and_then(|index| arguments.get(index + 1))
+        .map(PathBuf::from);
+    let audio_dir = replay.clone().unwrap_or_else(|| out_dir.join("audio"));
     let text_dir = out_dir.join("text");
     let raw_dir = out_dir.join("raw");
     for directory in [&audio_dir, &text_dir, &raw_dir] {
@@ -339,7 +358,9 @@ fn main() -> Result<(), String> {
     let endpoint = Endpoint { base: server.base(), key: server.key().to_string(), raw_dir };
 
     let mut recorder = Recorder::new();
-    recorder.start(Source::Microphone, audio_dir.clone())?;
+    if replay.is_none() {
+        recorder.start(Source::Microphone, audio_dir.clone())?;
+    }
     let mut pipeline = Pipeline {
         root: root.clone(),
         out_dir: out_dir.clone(),
@@ -358,10 +379,10 @@ fn main() -> Result<(), String> {
         next_chunk: 1,
         next_segment: 0,
     };
-    println!("recording started");
+    println!("{}", if replay.is_some() { "replaying recorded chunks" } else { "recording started" });
 
     // While recording: transcribe each closed chunk, draft each full window.
-    loop {
+    while replay.is_none() {
         let status = recorder.status();
         if let Some(error) = &status.error {
             println!("recorder error: {error}");
@@ -378,7 +399,19 @@ fn main() -> Result<(), String> {
         }
         std::thread::sleep(Duration::from_millis(500));
     }
-    let final_status = recorder.stop()?;
+    let final_status = match &replay {
+        None => recorder.stop()?,
+        Some(directory) => {
+            let mut status = recorder.status();
+            let mut samples = 0usize;
+            while directory.join(format!("chunk-{:04}.wav", status.chunks + 1)).exists() {
+                samples += read_samples(&directory.join(format!("chunk-{:04}.wav", status.chunks + 1)))?.len();
+                status.chunks += 1;
+            }
+            status.recorded_seconds = round(samples as f64 / app_lib::wav::SAMPLE_RATE as f64);
+            status
+        }
+    };
     let stopped = pipeline.at();
     println!(
         "{stopped:>7.1}s recording stopped: {:.1}s in {} chunks, {} discontinuities",
@@ -435,9 +468,14 @@ fn main() -> Result<(), String> {
     // The precise note: each window with its draft points as a checklist, merged, synthesized.
     let precise_started = pipeline.at();
     let mut precise_windows = Vec::new();
-    let windows = pipeline.windows.clone();
+    let groups = precise_groups(&pipeline.windows);
+    let windows: Vec<Vec<Segment>> = groups
+        .iter()
+        .map(|group| group.iter().flat_map(|index| pipeline.windows[*index].clone()).collect())
+        .collect();
     for (index, window) in windows.iter().enumerate() {
-        let checklist = precise_checklist(&pipeline.drafts[index]);
+        let checklist: Vec<Item> =
+            groups[index].iter().flat_map(|draft| precise_checklist(&pipeline.drafts[*draft])).collect();
         let user = if checklist.is_empty() {
             format!("과목: {}\n\n전사:\n{}", course(&out_dir), lines(window))
         } else {
@@ -525,6 +563,7 @@ fn main() -> Result<(), String> {
 
     let stt_seconds: f64 = pipeline.transcribed.iter().map(|chunk| chunk.seconds).sum();
     let report = serde_json::json!({
+        "mode": if replay.is_some() { "replay" } else { "recording" },
         "recorded_seconds": final_status.recorded_seconds,
         "chunks": final_status.chunks,
         "discontinuities": final_status.discontinuities,
