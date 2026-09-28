@@ -281,15 +281,56 @@ pub fn merge_precise(windows: Vec<Accepted<PreciseWindow>>, segments: &[Segment]
 /// Room the chat template takes around the system and user text.
 pub const TEMPLATE_TOKENS: usize = 64;
 
-/// What the synthesis call reads: one merged concept per line, its name and sources only.
-/// Explanations would make a long lecture's list outgrow the context (about 53 tokens a
-/// concept against 11).
-pub fn synthesis_input(body: &PreciseBody) -> String {
+/// What the synthesis call reads: one merged concept per line with its sources, and its
+/// explanation when `explained`. An explained line takes about 53 tokens, a bare one 11.
+pub fn synthesis_input(body: &PreciseBody, explained: bool) -> String {
     body.concepts
         .iter()
-        .map(|concept| format!("- {} [{}]", concept.name, concept.source_refs.join(", ")))
+        .map(|concept| {
+            let line = format!("- {} [{}]", concept.name, concept.source_refs.join(", "));
+            if explained {
+                format!("{line}: {}", concept.explanation)
+            } else {
+                line
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Which input the synthesis call was given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SynthesisForm {
+    Explained,
+    Names,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fitting {
+    Input { form: SynthesisForm, text: String, tokens: usize },
+    /// Even names and sources alone do not fit; the call is not made and nothing is cut.
+    TooLarge { tokens: usize },
+}
+
+/// The fullest synthesis input that fits: with explanations when they fit (they make the
+/// topic and review more specific), names and sources otherwise. `count` gives the prompt
+/// tokens a concept list makes once the prompt and course are around it.
+pub fn fitting_synthesis_input(
+    body: &PreciseBody,
+    max_tokens: u32,
+    context_tokens: u32,
+    mut count: impl FnMut(&str) -> Result<usize, String>,
+) -> Result<Fitting, String> {
+    let mut tokens = 0;
+    for form in [SynthesisForm::Explained, SynthesisForm::Names] {
+        let text = synthesis_input(body, form == SynthesisForm::Explained);
+        tokens = count(&text)?;
+        if fits_context(tokens, max_tokens, context_tokens) {
+            return Ok(Fitting::Input { form, text, tokens });
+        }
+    }
+    Ok(Fitting::TooLarge { tokens })
 }
 
 /// Whether a request of `prompt_tokens` can still produce `max_tokens` within the context.
@@ -602,7 +643,8 @@ mod tests {
         first.repairs.push(Repair { path: "$.examples[1]".into(), kind: "repeat_removed", detail: String::new() });
         let merged = merge_precise(vec![first, precise(vec![], vec![], vec![])], &lecture());
         assert_eq!(merged.repairs[0].path, "window1:$.examples[1]");
-        assert_eq!(synthesis_input(&merged.value), "- 교착 상태 [s1]");
+        assert_eq!(synthesis_input(&merged.value, false), "- 교착 상태 [s1]");
+        assert_eq!(synthesis_input(&merged.value, true), "- 교착 상태 [s1]: 멈춘 상태");
         let cited: Vec<String> = cited_by(&merged.value, &lecture()).into_iter().map(|segment| segment.id).collect();
         assert_eq!(cited, refs(&["s1", "s2"]));
     }
@@ -619,7 +661,39 @@ mod tests {
             examples: vec![],
             terms: vec![],
         };
-        assert_eq!(synthesis_input(&body), "- 교착 상태 [s1, s13]\n- 세마포어 [s18]");
+        assert_eq!(synthesis_input(&body, false), "- 교착 상태 [s1, s13]\n- 세마포어 [s18]");
+        assert_eq!(
+            synthesis_input(&body, true),
+            "- 교착 상태 [s1, s13]: 서로 기다리며 멈춘 상태\n- 세마포어 [s18]: 정수와 두 연산"
+        );
+    }
+
+    #[test]
+    fn explanations_go_in_when_they_fit_and_names_alone_otherwise() {
+        let body = PreciseBody {
+            concepts: vec![
+                concept("교착 상태", "서로 기다리며 멈춘 상태", &["s1", "s13"]),
+                concept("세마포어", "정수와 두 연산", &["s18"]),
+            ],
+            examples: vec![],
+            terms: vec![],
+        };
+        let chars = |text: &str| Ok::<usize, String>(text.chars().count());
+        let explained = synthesis_input(&body, true);
+        let names = synthesis_input(&body, false);
+        let room = |text: &String| (text.chars().count() + TEMPLATE_TOKENS) as u32;
+        assert_eq!(
+            fitting_synthesis_input(&body, 0, room(&explained), chars).expect("count"),
+            Fitting::Input { form: SynthesisForm::Explained, text: explained.clone(), tokens: explained.chars().count() }
+        );
+        assert_eq!(
+            fitting_synthesis_input(&body, 0, room(&explained) - 1, chars).expect("count"),
+            Fitting::Input { form: SynthesisForm::Names, text: names.clone(), tokens: names.chars().count() }
+        );
+        assert_eq!(
+            fitting_synthesis_input(&body, 0, room(&names) - 1, chars).expect("count"),
+            Fitting::TooLarge { tokens: names.chars().count() }
+        );
     }
 
     #[test]

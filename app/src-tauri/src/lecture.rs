@@ -94,7 +94,7 @@ pub fn precise_window_prompt() -> String {
 
 pub fn precise_synthesis_prompt() -> String {
     format!(
-        "너는 한국어 대학 강의 한 회차의 개념 이름과 인용 구간 목록을 읽고 주제와 복습 항목을 쓴다. 출력 형식은 lecture-precise-synthesis-v1이다.\n{COMMON_RULES}\n\
+        "너는 한국어 대학 강의 한 회차의 개념 목록(개념 이름, 인용 구간, 있으면 설명)을 읽고 주제와 복습 항목을 쓴다. 출력 형식은 lecture-precise-synthesis-v1이다.\n{COMMON_RULES}\n\
          topic은 이번 강의의 주제 한 문장이다. source_refs에는 주제를 가장 잘 보여 주는 구간만 쓴다.\n\
          review는 복습할 항목이다. 개념 설명을 되풀이하지 말고 무엇을 복습할지 적는다."
     )
@@ -1018,7 +1018,7 @@ mod tests {
         assert!(precise_synthesis_prompt().contains("topic"));
         assert!(!precise_synthesis_prompt().contains("concepts에는"));
         assert!(precise_window_prompt().contains("요점 목록"));
-        assert!(precise_synthesis_prompt().contains("개념 이름과 인용 구간"));
+        assert!(precise_synthesis_prompt().contains("개념 목록(개념 이름, 인용 구간, 있으면 설명)"));
         assert_eq!(PRECISE_SYNTHESIS_PROMPT_VERSION, "lecture-precise-synthesis-prompt-v2");
     }
 

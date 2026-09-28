@@ -25,8 +25,8 @@ use app_lib::lecture::{
 };
 use app_lib::lecture_fixture::{check_draft, check_note, Expectation, Fixture};
 use app_lib::lecture_merge::{
-    assemble_draft, assemble_note, assemble_precise_note, cited_by, fits_context, merge_precise, name_key,
-    precise_checklist, synthesis_input, Draft, Note,
+    assemble_draft, assemble_note, assemble_precise_note, cited_by, fitting_synthesis_input, merge_precise, name_key,
+    precise_checklist, Draft, Fitting, Note,
 };
 use app_lib::llm::{complete_json, count_tokens, stream_draft, Completion, Server, ServerSettings};
 use app_lib::power::KeepAwake;
@@ -429,6 +429,7 @@ fn main() -> Result<(), String> {
     let mut drafts_record = Vec::new();
     let mut notes_record = Vec::new();
     let mut skipped = Vec::new();
+    let mut synthesis_inputs = Vec::new();
     for run in 1..=runs {
         let mut drafts = Vec::new();
         for (index, window) in windows.iter().enumerate() {
@@ -602,14 +603,22 @@ fn main() -> Result<(), String> {
             println!("run {run} note_precise skipped: no window cited anything");
             continue;
         }
-        // The synthesis input is checked before the call and never cut short.
-        let synthesis_user = format!("과목: {}\n\n개념 목록:\n{}", fixture.course, synthesis_input(&body.value));
-        let prompt_tokens = count_tokens(&endpoint.base, &endpoint.key, &format!("{}\n{}", prompts[5].1, synthesis_user))?;
-        if !fits_context(prompt_tokens, WINDOW_MAX_TOKENS, CONTEXT_TOKENS) {
-            println!("run {run} note_precise skipped: synthesis input of {prompt_tokens} tokens does not fit");
-            skipped.push(serde_json::json!({"run": run, "prompt_tokens": prompt_tokens, "reason": "input_too_large"}));
-            continue;
-        }
+        // The synthesis input is chosen to fit before the call and never cut short.
+        let course_line = format!("과목: {}\n\n개념 목록:\n", fixture.course);
+        let fitting = fitting_synthesis_input(&body.value, WINDOW_MAX_TOKENS, CONTEXT_TOKENS, |list| {
+            count_tokens(&endpoint.base, &endpoint.key, &format!("{}\n{course_line}{list}", prompts[5].1))
+        })?;
+        let synthesis_user = match fitting {
+            Fitting::Input { form, text, tokens } => {
+                synthesis_inputs.push(serde_json::json!({"run": run, "form": form, "prompt_tokens": tokens}));
+                format!("{course_line}{text}")
+            }
+            Fitting::TooLarge { tokens } => {
+                println!("run {run} note_precise skipped: synthesis input of {tokens} tokens does not fit");
+                skipped.push(serde_json::json!({"run": run, "prompt_tokens": tokens, "reason": "input_too_large"}));
+                continue;
+            }
+        };
         let (synthesis, attempts) = endpoint.ask(
             &format!("run{run}-precise-synthesis"),
             &prompts[5].1,
@@ -647,6 +656,7 @@ fn main() -> Result<(), String> {
                        "precise_window": WINDOW_MAX_TOKENS, "precise_synthesis": WINDOW_MAX_TOKENS},
         "summary": summarize(&calls, &drafts_record, &notes_record, runs, &windows, skipped.len()),
         "skipped_syntheses": skipped,
+        "synthesis_inputs": synthesis_inputs,
         "calls": calls,
         "drafts": drafts_record,
         "notes": notes_record,

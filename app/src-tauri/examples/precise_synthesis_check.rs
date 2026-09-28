@@ -3,17 +3,17 @@
 //! Usage: cargo run --release --example precise_synthesis_check -- <repository root> <out dir> <lecture-contract.json>...
 //!
 //! Each saved precise note's concepts, examples and terms are read back as the merged body,
-//! and the synthesis is asked again with the names-and-sources input. Every note's concepts
-//! strung together, and that list twice over, stand in for a long lecture. The same doubled
-//! list with explanations, the input format this replaces, is checked for size and must be
-//! refused without a call.
+//! and the synthesis is asked again with the fullest input that fits the context. Every
+//! note's concepts strung together, and that list twice over, stand in for a long lecture.
+//! The list eight times over is too large even as bare names and must be refused without a
+//! call.
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
 use app_lib::contract::{generation_schema, Segment, Violation, PRECISE_SYNTHESIS_SCHEMA};
 use app_lib::lecture::{precise_synthesis_prompt, validate_precise_synthesis, Accepted, Concept, Item, PreciseSynthesis, Term};
 use app_lib::lecture_fixture::Fixture;
-use app_lib::lecture_merge::{cited_by, fits_context, synthesis_input, PreciseBody};
+use app_lib::lecture_merge::{cited_by, fitting_synthesis_input, Fitting, PreciseBody, SynthesisForm};
 use app_lib::llm::{complete_json, count_tokens, stream_draft, Server, ServerSettings};
 use app_lib::power::KeepAwake;
 use app_lib::process::ProcessGroup;
@@ -44,6 +44,7 @@ fn body_of(note: &serde_json::Value) -> Result<PreciseBody, String> {
 }
 
 struct Outcome {
+    form: Option<SynthesisForm>,
     prompt_tokens: usize,
     seconds: f64,
     attempts: usize,
@@ -51,11 +52,27 @@ struct Outcome {
     violations: Vec<Violation>,
 }
 
-/// Asks once, and once more with the violations if the answer is refused.
+/// Picks the fullest input that fits, then asks once, and once more with the violations if
+/// the answer is refused. An input too large even as bare names is not sent.
 fn synthesize(base: &str, key: &str, course: &str, body: &PreciseBody, all: &[Segment]) -> Result<Outcome, String> {
     let system = precise_synthesis_prompt();
-    let user = format!("과목: {course}\n\n개념 목록:\n{}", synthesis_input(body));
-    let prompt_tokens = count_tokens(base, key, &format!("{system}\n{user}"))?;
+    let course_line = format!("과목: {course}\n\n개념 목록:\n");
+    let fitting = fitting_synthesis_input(body, MAX_TOKENS, CONTEXT_TOKENS, |list| {
+        count_tokens(base, key, &format!("{system}\n{course_line}{list}"))
+    })?;
+    let (form, user, prompt_tokens) = match fitting {
+        Fitting::Input { form, text, tokens } => (form, format!("{course_line}{text}"), tokens),
+        Fitting::TooLarge { tokens } => {
+            return Ok(Outcome {
+                form: None,
+                prompt_tokens: tokens,
+                seconds: 0.0,
+                attempts: 0,
+                accepted: None,
+                violations: Vec::new(),
+            })
+        }
+    };
     let cited = cited_by(body, all);
     let ids: Vec<String> = cited.iter().map(|segment| segment.id.clone()).collect();
     let schema = generation_schema(PRECISE_SYNTHESIS_SCHEMA, &ids)?;
@@ -67,7 +84,14 @@ fn synthesize(base: &str, key: &str, course: &str, body: &PreciseBody, all: &[Se
         seconds += completion.seconds;
         match validate_precise_synthesis(&completion.content, &completion.finish_reason, &cited) {
             Ok(accepted) => {
-                return Ok(Outcome { prompt_tokens, seconds, attempts: attempt, accepted: Some(accepted), violations })
+                return Ok(Outcome {
+                    form: Some(form),
+                    prompt_tokens,
+                    seconds,
+                    attempts: attempt,
+                    accepted: Some(accepted),
+                    violations,
+                })
             }
             Err(found) => {
                 let listed: Vec<String> =
@@ -77,7 +101,7 @@ fn synthesize(base: &str, key: &str, course: &str, body: &PreciseBody, all: &[Se
             }
         }
     }
-    Ok(Outcome { prompt_tokens, seconds, attempts: 2, accepted: None, violations })
+    Ok(Outcome { form: Some(form), prompt_tokens, seconds, attempts: 2, accepted: None, violations })
 }
 
 fn cites_chatter(synthesis: &PreciseSynthesis, chatter: &[String]) -> bool {
@@ -89,6 +113,7 @@ fn cites_chatter(synthesis: &PreciseSynthesis, chatter: &[String]) -> bool {
 
 fn record(outcome: &Outcome, chatter: &[String]) -> serde_json::Value {
     serde_json::json!({
+        "form": outcome.form,
         "prompt_tokens": outcome.prompt_tokens,
         "seconds": round(outcome.seconds),
         "attempts": outcome.attempts,
@@ -144,8 +169,9 @@ fn main() -> Result<(), String> {
         every_concept.extend(body.concepts.clone());
         let outcome = synthesize(&base, &key, &fixture.course, &body, &all)?;
         println!(
-            "replay {path} run {run}: {} concepts, {} tokens, accepted {} in {:.1}s",
+            "replay {path} run {run}: {} concepts, {:?} {} tokens, accepted {} in {:.1}s",
             body.concepts.len(),
+            outcome.form,
             outcome.prompt_tokens,
             outcome.accepted.is_some(),
             outcome.seconds
@@ -164,8 +190,9 @@ fn main() -> Result<(), String> {
         let body = PreciseBody { concepts, examples: Vec::new(), terms: Vec::new() };
         let outcome = synthesize(&base, &key, &fixture.course, &body, &all)?;
         println!(
-            "scale {} concepts: {} tokens, accepted {} in {:.1}s",
+            "scale {} concepts: {:?} {} tokens, accepted {} in {:.1}s",
             body.concepts.len(),
+            outcome.form,
             outcome.prompt_tokens,
             outcome.accepted.is_some(),
             outcome.seconds
@@ -175,21 +202,19 @@ fn main() -> Result<(), String> {
         scale.push(entry);
     }
 
-    // The input this replaces: every concept with its explanation, for the doubled list.
-    let explained: Vec<String> = (0..2)
-        .flat_map(|_| every_concept.iter())
-        .map(|concept| format!("- {} [{}]: {}", concept.name, concept.source_refs.join(", "), concept.explanation))
-        .collect();
-    let old_user = format!("과목: {}\n\n개념 목록:\n{}", fixture.course, explained.join("\n"));
-    let old_tokens = count_tokens(&base, &key, &format!("{}\n{old_user}", precise_synthesis_prompt()))?;
-    let fits = fits_context(old_tokens, MAX_TOKENS, CONTEXT_TOKENS);
-    println!("size check: {} explained concepts, {old_tokens} tokens, fits {fits}", explained.len());
-    let size_check = serde_json::json!({
-        "concepts": explained.len(),
-        "prompt_tokens": old_tokens,
-        "fits": fits,
-        "outcome": if fits { "would be called" } else { "input_too_large, not called" },
-    });
+    // Too large even as bare names: refused before any call.
+    let concepts: Vec<Concept> = (0..8).flat_map(|_| every_concept.clone()).collect();
+    let body = PreciseBody { concepts, examples: Vec::new(), terms: Vec::new() };
+    let outcome = synthesize(&base, &key, &fixture.course, &body, &all)?;
+    println!(
+        "size check {} concepts: {:?} {} tokens, attempts {}",
+        body.concepts.len(),
+        outcome.form,
+        outcome.prompt_tokens,
+        outcome.attempts
+    );
+    let mut size_check = record(&outcome, &chatter);
+    size_check["concepts"] = serde_json::json!(body.concepts.len());
     server.stop()?;
 
     let report = serde_json::json!({

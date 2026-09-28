@@ -234,3 +234,13 @@ app/src-tauri/target/release/examples/precise_synthesis_check.exe "C:\temp_git\J
 - [ ] **Step 3:** 결과를 읽고 설계 4절 기준으로 판정한다. 기존·새 주제와 복습을 나란히 읽고 품질을 적는다.
 - [ ] **Step 4:** 보고서 `docs/validation/2026-09-28-precise-synthesis-input.md`를 쓰고, 결정 0010 7절에 한 문단, README 목록에 링크를 더한다. `python artifacts/check_docs.py` → `broken links: none`.
 - [ ] **Step 5:** 커밋한다. 메시지는 `docs: measure the names-only synthesis input`로 한다.
+
+---
+
+### Task 6: 예산에 따른 입력 선택 (재생 후 보완)
+
+설계 6절. `lecture_merge.rs`에 `SynthesisForm`(`Explained`·`Names`)과 `Fitting`(`Input{form, text, tokens}`·`TooLarge{tokens}`), `fitting_synthesis_input(body, max_tokens, context_tokens, count)`을 두고, `synthesis_input(body, explained: bool)`로 바꾼다. 하네스와 재생 예제는 이 함수를 쓰고 고른 형식을 기록한다.
+
+- [ ] 테스트: 설명 형식이 맞으면 `Explained`, 1토큰 모자라면 `Names`, 그것도 모자라면 `TooLarge`.
+- [ ] 구현, `cargo test`, 두 예제 빌드.
+- [ ] 재생을 다시 돌려 10건은 설명 형식, 규모 시험은 이름 형식이 골라지는지 확인한다.
