@@ -25,10 +25,10 @@ use app_lib::lecture::{
 };
 use app_lib::lecture_fixture::{check_draft, check_note, Expectation, Fixture};
 use app_lib::lecture_merge::{
-    assemble_draft, assemble_note, assemble_precise_note, cited_by, merge_precise, name_key, precise_checklist,
-    synthesis_input, Draft, Note,
+    assemble_draft, assemble_note, assemble_precise_note, cited_by, fits_context, merge_precise, name_key,
+    precise_checklist, synthesis_input, Draft, Note,
 };
-use app_lib::llm::{complete_json, stream_draft, Completion, Server, ServerSettings};
+use app_lib::llm::{complete_json, count_tokens, stream_draft, Completion, Server, ServerSettings};
 use app_lib::power::KeepAwake;
 use app_lib::process::ProcessGroup;
 use serde::Serialize;
@@ -36,6 +36,7 @@ use serde::Serialize;
 /// Generous limits, so the measurement shows how long answers really are.
 const WINDOW_MAX_TOKENS: u32 = 2_048;
 const NOTE_MAX_TOKENS: u32 = 4_096;
+const CONTEXT_TOKENS: u32 = 8_192;
 /// Decision 0009: a window's draft must be ready within 150 s; after recording, the note
 /// must be saved within 300 s.
 const WINDOW_LIMIT_SECONDS: f64 = 150.0;
@@ -150,7 +151,12 @@ fn empty_window() -> Accepted<PreciseWindow> {
 
 /// Whether each precise note reaches every window, how many names repeat after merging, and
 /// how many concepts each note has.
-fn precise_summary(calls: &[Call], notes: &[Assembled<Note>], windows: &[Vec<Segment>]) -> serde_json::Value {
+fn precise_summary(
+    calls: &[Call],
+    notes: &[Assembled<Note>],
+    windows: &[Vec<Segment>],
+    skipped: usize,
+) -> serde_json::Value {
     let window_calls: Vec<&Call> = calls.iter().filter(|call| call.stage == "precise_window").collect();
     let asked_again = window_calls.iter().filter(|call| call.uncovered.len() > 1).count();
     let uncovered_first: usize = window_calls.iter().filter_map(|call| call.uncovered.first()).sum();
@@ -191,6 +197,7 @@ fn precise_summary(calls: &[Call], notes: &[Assembled<Note>], windows: &[Vec<Seg
         "windows_asked_again_for_points": asked_again,
         "uncovered_points_first_answer": uncovered_first,
         "uncovered_points_kept": uncovered_kept,
+        "syntheses_skipped": skipped,
     })
 }
 
@@ -296,6 +303,7 @@ fn summarize(
     notes: &[Assembled<Note>],
     runs: usize,
     windows: &[Vec<Segment>],
+    skipped: usize,
 ) -> serde_json::Value {
     let mut stages = serde_json::Map::new();
     for stage in ["points", "notices", "code", "note_body_from_drafts", "precise_window", "precise_synthesis"] {
@@ -366,7 +374,7 @@ fn summarize(
         "gating_all_passed": gating_all_passed,
         "windows_within_limit": {"within": windows_within, "windows": drafts.len(), "limit_seconds": WINDOW_LIMIT_SECONDS},
         "runs_within_after_recording_limit": {"within": runs_within, "runs": runs, "limit_seconds": AFTER_RECORDING_LIMIT_SECONDS},
-        "precise": precise_summary(calls, notes, windows),
+        "precise": precise_summary(calls, notes, windows, skipped),
         "per_run": per_run,
     })
 }
@@ -395,7 +403,7 @@ fn main() -> Result<(), String> {
         executable: root.join("runtimes/b10994/vulkan/llama-server.exe"),
         model: root.join("models/Qwen3-8B-Q5_K_M.gguf"),
         log: out_dir.join("server.log"),
-        context_tokens: 8192,
+        context_tokens: CONTEXT_TOKENS,
         threads: 2,
     };
     let mut server = Server::start(&group, &settings)?;
@@ -420,6 +428,7 @@ fn main() -> Result<(), String> {
     let mut calls = Vec::new();
     let mut drafts_record = Vec::new();
     let mut notes_record = Vec::new();
+    let mut skipped = Vec::new();
     for run in 1..=runs {
         let mut drafts = Vec::new();
         for (index, window) in windows.iter().enumerate() {
@@ -593,10 +602,18 @@ fn main() -> Result<(), String> {
             println!("run {run} note_precise skipped: no window cited anything");
             continue;
         }
+        // The synthesis input is checked before the call and never cut short.
+        let synthesis_user = format!("과목: {}\n\n개념 목록:\n{}", fixture.course, synthesis_input(&body.value));
+        let prompt_tokens = count_tokens(&endpoint.base, &endpoint.key, &format!("{}\n{}", prompts[5].1, synthesis_user))?;
+        if !fits_context(prompt_tokens, WINDOW_MAX_TOKENS, CONTEXT_TOKENS) {
+            println!("run {run} note_precise skipped: synthesis input of {prompt_tokens} tokens does not fit");
+            skipped.push(serde_json::json!({"run": run, "prompt_tokens": prompt_tokens, "reason": "input_too_large"}));
+            continue;
+        }
         let (synthesis, attempts) = endpoint.ask(
             &format!("run{run}-precise-synthesis"),
             &prompts[5].1,
-            &format!("과목: {}\n\n개념 목록:\n{}", fixture.course, synthesis_input(&body.value)),
+            &synthesis_user,
             &generation_schema(PRECISE_SYNTHESIS_SCHEMA, &ids(&merged_cited))?,
             WINDOW_MAX_TOKENS,
             |completion| validate_precise_synthesis(&completion.content, &completion.finish_reason, &merged_cited),
@@ -628,7 +645,8 @@ fn main() -> Result<(), String> {
         "prompts": prompts.iter().map(|(version, _)| *version).collect::<Vec<_>>(),
         "max_tokens": {"window_call": WINDOW_MAX_TOKENS, "note_body": NOTE_MAX_TOKENS,
                        "precise_window": WINDOW_MAX_TOKENS, "precise_synthesis": WINDOW_MAX_TOKENS},
-        "summary": summarize(&calls, &drafts_record, &notes_record, runs, &windows),
+        "summary": summarize(&calls, &drafts_record, &notes_record, runs, &windows, skipped.len()),
+        "skipped_syntheses": skipped,
         "calls": calls,
         "drafts": drafts_record,
         "notes": notes_record,
