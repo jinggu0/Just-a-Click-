@@ -163,19 +163,28 @@ pub fn assemble_note(body: Accepted<NoteBody>, drafts: &[Draft]) -> Accepted<Not
     }
 }
 
-/// The draft points a precise window must cover. Points citing only segments that the
-/// draft's notices or code cite are left out: the precise note writes neither.
+/// The draft points a precise window must cover. The precise note writes neither notices
+/// nor code, so points citing only segments the draft's notices cite are left out, and so are
+/// points that spell out one of the draft's commands. Code merely citing a point's segment is
+/// not enough, and single words are not taken as commands: the code call sometimes turns
+/// concept words into code ("kill" for a recovery segment, "wait" and "signal" for semaphores).
 pub fn precise_checklist(draft: &Draft) -> Vec<Item> {
-    let elsewhere: BTreeSet<&String> = draft
-        .notices
+    let noticed: BTreeSet<&String> = draft.notices.iter().flat_map(|notice| &notice.source_refs).collect();
+    let code: Vec<String> = draft
+        .code
         .iter()
-        .flat_map(|notice| &notice.source_refs)
-        .chain(draft.code.iter().flat_map(|item| &item.source_refs))
+        .map(|item| collapse(&item.code).to_lowercase())
+        .filter(|command| command.contains(' '))
         .collect();
     draft
         .points
         .iter()
-        .filter(|point| point.source_refs.iter().any(|id| !elsewhere.contains(id)))
+        .filter(|point| {
+            let only_notices = point.source_refs.iter().all(|id| noticed.contains(id));
+            let text = collapse(&point.content).to_lowercase();
+            let spells_code = code.iter().any(|item| !item.is_empty() && text.contains(item.as_str()));
+            !only_notices && !spells_code
+        })
         .cloned()
         .collect()
 }
@@ -472,7 +481,7 @@ mod tests {
             window: Window { first: "s21".into(), last: "s27".into() },
             points: vec![
                 item("과제 안내", &["s22"]),
-                item("실습 명령어", &["s25", "s26"]),
+                item("컴파일은 gcc -o banker banker.c 로 한다", &["s25", "s26"]),
                 item("은행원 알고리즘 과제와 구현", &["s22", "s23"]),
                 item("프로세스 확인", &["s27"]),
             ],
@@ -481,6 +490,30 @@ mod tests {
         };
         let contents: Vec<String> = precise_checklist(&draft).into_iter().map(|point| point.content).collect();
         assert_eq!(contents, vec!["은행원 알고리즘 과제와 구현", "프로세스 확인"]);
+    }
+
+    #[test]
+    fn a_point_stays_on_the_checklist_when_code_merely_cites_its_segment() {
+        // The code call once wrote "kill" for the recovery segment; the recovery point must stay.
+        let draft = Draft {
+            window: Window { first: "s25".into(), last: "s31".into() },
+            points: vec![
+                item("실습 명령어는 chmod  755 run.sh 이다", &["s25"]),
+                item("교착 상태 회복은 프로세스 종료나 자원 회수로 한다", &["s31"]),
+                item("세마포어는 wait, signal 두 연산을 쓴다", &["s18"]),
+            ],
+            notices: vec![],
+            code: vec![
+                Code { source_refs: refs(&["s25"]), ..code("chmod 755 run.sh", true) },
+                Code { source_refs: refs(&["s31"]), ..code("kill", false) },
+                Code { source_refs: refs(&["s18"]), ..code("wait", true) },
+            ],
+        };
+        let contents: Vec<String> = precise_checklist(&draft).into_iter().map(|point| point.content).collect();
+        assert_eq!(
+            contents,
+            vec!["교착 상태 회복은 프로세스 종료나 자원 회수로 한다", "세마포어는 wait, signal 두 연산을 쓴다"]
+        );
     }
 
     #[test]
