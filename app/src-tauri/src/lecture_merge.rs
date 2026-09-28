@@ -163,6 +163,21 @@ pub fn assemble_note(body: Accepted<NoteBody>, drafts: &[Draft]) -> Accepted<Not
     }
 }
 
+/// A last window with fewer segments than this joins the one before it in the precise note.
+pub const MIN_LAST_WINDOW_SEGMENTS: usize = 3;
+
+/// Which draft windows each precise window reads, as indexes. A last window of one or two
+/// segments (the end of a lecture) has too little to stand on its own, and a call on so
+/// little text invented a concept, so it is read together with the window before.
+pub fn precise_groups(windows: &[Vec<Segment>]) -> Vec<Vec<usize>> {
+    let mut groups: Vec<Vec<usize>> = (0..windows.len()).map(|index| vec![index]).collect();
+    if groups.len() >= 2 && windows[windows.len() - 1].len() < MIN_LAST_WINDOW_SEGMENTS {
+        let last = groups.pop().expect("two groups");
+        groups.last_mut().expect("one group").extend(last);
+    }
+    groups
+}
+
 /// The draft points a precise window must cover. The precise note writes neither notices
 /// nor code, so points citing only segments the draft's notices cite are left out, and so are
 /// points that spell out one of the draft's commands. Code merely citing a point's segment is
@@ -565,6 +580,29 @@ mod tests {
             contents,
             vec!["교착 상태 회복은 프로세스 종료나 자원 회수로 한다", "세마포어는 wait, signal 두 연산을 쓴다"]
         );
+    }
+
+    #[test]
+    fn a_short_last_window_joins_the_one_before_for_the_precise_note() {
+        let sizes = |counts: &[usize]| -> Vec<Vec<Segment>> {
+            let mut next = 0;
+            counts
+                .iter()
+                .map(|count| {
+                    (0..*count)
+                        .map(|_| {
+                            next += 1;
+                            Segment { id: format!("s{next}"), time: "00:00".into(), text: "말".into() }
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        assert_eq!(precise_groups(&sizes(&[10, 10, 2])), vec![vec![0], vec![1, 2]]);
+        assert_eq!(precise_groups(&sizes(&[10, 10, 3])), vec![vec![0], vec![1], vec![2]]);
+        assert_eq!(precise_groups(&sizes(&[10, 10])), vec![vec![0], vec![1]]);
+        assert_eq!(precise_groups(&sizes(&[2])), vec![vec![0]]);
+        assert!(precise_groups(&[]).is_empty());
     }
 
     #[test]
