@@ -1394,3 +1394,18 @@ Expected: `broken links: none`
 git add docs/validation/<측정 날짜>-precise-note-by-window.md docs/decisions/0010-lecture-note-contract.md docs/ROADMAP.md README.md
 git commit -m "docs: measure the precise note read by window"
 ```
+
+---
+
+### Task 4b: 요점 목록과 포괄 검사 (시험 후 보완)
+
+설계 10절. Task 4의 시험 두 번 가운데 두 번째에서 3창 호출이 개념 1개만 쓰고 멈췄다.
+
+**Files:**
+- Modify: `app/src-tauri/src/lecture.rs`(`precise_window_prompt`, `pub fn uncovered_points(window: &PreciseWindow, checklist: &[Item]) -> Vec<Item>`)
+- Modify: `app/src-tauri/src/lecture_merge.rs`(`pub fn precise_checklist(draft: &Draft) -> Vec<Item>`)
+- Modify: `app/src-tauri/examples/lecture_contract_check.rs`(창 입력에 요점 목록, 빠진 요점 재질문, `Call.uncovered`, 요약 `precise.uncovered_points`)
+
+- [ ] 테스트: `precise_checklist`가 공지·코드 구간만 인용한 요점을 빼는지, `uncovered_points`가 개념·예제·용어 중 어느 것이 요점 구간을 하나라도 인용하면 다룬 것으로 보는지.
+- [ ] 구현과 `cargo test`.
+- [ ] 1회 시험으로 목록·재질문이 동작하는지 확인하고 커밋한다.

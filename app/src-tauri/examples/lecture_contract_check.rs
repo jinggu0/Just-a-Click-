@@ -18,15 +18,15 @@ use app_lib::contract::{
 };
 use app_lib::lecture::{
     code_prompt, note_body_prompt, notices_prompt, points_prompt, precise_synthesis_prompt, precise_window_prompt,
-    validate_code, validate_note_body, validate_notices, validate_points, validate_precise_synthesis,
-    validate_precise_window, Accepted, PreciseWindow, Repair, CODE_PROMPT_VERSION, NOTE_BODY_PROMPT_VERSION,
-    NOTICES_PROMPT_VERSION, POINTS_PROMPT_VERSION, PRECISE_SYNTHESIS_PROMPT_VERSION, PRECISE_WINDOW_PROMPT_VERSION,
-    PRECISE_WINDOW_VERSION,
+    uncovered_points, validate_code, validate_note_body, validate_notices, validate_points,
+    validate_precise_synthesis, validate_precise_window, Accepted, Item, PreciseWindow, Repair, CODE_PROMPT_VERSION,
+    NOTE_BODY_PROMPT_VERSION, NOTICES_PROMPT_VERSION, POINTS_PROMPT_VERSION, PRECISE_SYNTHESIS_PROMPT_VERSION,
+    PRECISE_WINDOW_PROMPT_VERSION, PRECISE_WINDOW_VERSION,
 };
 use app_lib::lecture_fixture::{check_draft, check_note, Expectation, Fixture};
 use app_lib::lecture_merge::{
-    assemble_draft, assemble_note, assemble_precise_note, cited_by, merge_precise, name_key, synthesis_input, Draft,
-    Note,
+    assemble_draft, assemble_note, assemble_precise_note, cited_by, merge_precise, name_key, precise_checklist,
+    synthesis_input, Draft, Note,
 };
 use app_lib::llm::{complete_json, stream_draft, Completion, Server, ServerSettings};
 use app_lib::power::KeepAwake;
@@ -59,6 +59,10 @@ struct Call {
     accepted: bool,
     seconds: f64,
     attempts: Vec<Attempt>,
+    /// Precise windows only: checklist points left out by the first answer and, when asked
+    /// again, by the second.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    uncovered: Vec<usize>,
 }
 
 #[derive(Serialize)]
@@ -146,7 +150,14 @@ fn empty_window() -> Accepted<PreciseWindow> {
 
 /// Whether each precise note reaches every window, how many names repeat after merging, and
 /// how many concepts each note has.
-fn precise_summary(notes: &[Assembled<Note>], windows: &[Vec<Segment>]) -> serde_json::Value {
+fn precise_summary(calls: &[Call], notes: &[Assembled<Note>], windows: &[Vec<Segment>]) -> serde_json::Value {
+    let window_calls: Vec<&Call> = calls.iter().filter(|call| call.stage == "precise_window").collect();
+    let asked_again = window_calls.iter().filter(|call| call.uncovered.len() > 1).count();
+    let uncovered_first: usize = window_calls.iter().filter_map(|call| call.uncovered.first()).sum();
+    let uncovered_kept: usize = window_calls
+        .iter()
+        .filter_map(|call| call.uncovered.iter().min())
+        .sum();
     let precise: Vec<&Assembled<Note>> = notes.iter().filter(|note| note.kind == "note_precise").collect();
     let covers = |note: &Note, window: &[Segment]| {
         note.concepts
@@ -177,12 +188,24 @@ fn precise_summary(notes: &[Assembled<Note>], windows: &[Vec<Segment>]) -> serde
         "cover_every_window": cover_every_window,
         "duplicate_names": duplicate_names,
         "concept_counts": concept_counts,
+        "windows_asked_again_for_points": asked_again,
+        "uncovered_points_first_answer": uncovered_first,
+        "uncovered_points_kept": uncovered_kept,
     })
 }
 
 fn round(value: f64, places: i32) -> f64 {
     let scale = 10f64.powi(places);
     (value * scale).round() / scale
+}
+
+/// Points as the model reads them: one per line with the segments they cite.
+fn listed(points: &[Item]) -> String {
+    points
+        .iter()
+        .map(|point| format!("- {} [{}]", point.content, point.source_refs.join(", ")))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn ids(segments: &[Segment]) -> Vec<String> {
@@ -195,7 +218,7 @@ fn lines(segments: &[Segment]) -> String {
 
 fn call(stage: &'static str, run: usize, window: Option<usize>, attempts: Vec<Attempt>, accepted: bool) -> Call {
     let seconds = round(attempts.iter().map(|attempt| attempt.seconds).sum(), 2);
-    Call { stage, run, window, accepted, seconds, attempts }
+    Call { stage, run, window, accepted, seconds, attempts, uncovered: Vec::new() }
 }
 
 /// The segments the drafts' points cite, so the note can quote the transcript.
@@ -343,7 +366,7 @@ fn summarize(
         "gating_all_passed": gating_all_passed,
         "windows_within_limit": {"within": windows_within, "windows": drafts.len(), "limit_seconds": WINDOW_LIMIT_SECONDS},
         "runs_within_after_recording_limit": {"within": runs_within, "runs": runs, "limit_seconds": AFTER_RECORDING_LIMIT_SECONDS},
-        "precise": precise_summary(notes, windows),
+        "precise": precise_summary(calls, notes, windows),
         "per_run": per_run,
     })
 }
@@ -493,24 +516,74 @@ fn main() -> Result<(), String> {
             });
         }
 
-        // The precise note: each window from its own transcript, merged by the app, then one
-        // call for topic and review over the merged concepts.
+        // The precise note: each window from its own transcript with its draft points as a
+        // checklist, merged by the app, then one call for topic and review over the merged
+        // concepts. A window that leaves checklist points out is asked once more.
         let mut precise_windows = Vec::new();
         let mut precise_seconds = 0.0;
         let mut precise_complete = true;
         for (index, window) in windows.iter().enumerate() {
-            let (answer, attempts) = endpoint.ask(
-                &format!("run{run}-precise-window{}", index + 1),
-                &prompts[4].1,
-                &format!("과목: {}\n\n전사:\n{}", fixture.course, lines(window)),
-                &generation_schema(PRECISE_WINDOW_SCHEMA, &ids(window))?,
-                WINDOW_MAX_TOKENS,
-                |completion| validate_precise_window(&completion.content, &completion.finish_reason, window),
-            )?;
-            let record = call("precise_window", run, Some(index + 1), attempts, answer.is_some());
+            let checklist = precise_checklist(&drafts[index]);
+            let user = if checklist.is_empty() {
+                format!("과목: {}\n\n전사:\n{}", fixture.course, lines(window))
+            } else {
+                format!(
+                    "과목: {}\n\n이 구간의 요점 목록:\n{}\n\n전사:\n{}",
+                    fixture.course,
+                    listed(&checklist),
+                    lines(window)
+                )
+            };
+            let label = format!("run{run}-precise-window{}", index + 1);
+            let schema = generation_schema(PRECISE_WINDOW_SCHEMA, &ids(window))?;
+            let validate =
+                |completion: &Completion| validate_precise_window(&completion.content, &completion.finish_reason, window);
+            let (answer, mut attempts) =
+                endpoint.ask(&label, &prompts[4].1, &user, &schema, WINDOW_MAX_TOKENS, validate)?;
+            let mut uncovered = Vec::new();
+            let answer = match answer {
+                Some(first) => {
+                    let missing = uncovered_points(&first.value, &checklist);
+                    uncovered.push(missing.len());
+                    if missing.is_empty() {
+                        Some(first)
+                    } else {
+                        let request = format!(
+                            "{user}\n\n이전 답이 다음 요점을 다루지 않았다. 빠진 요점까지 포함해 처음부터 다시 쓴다.\n{}",
+                            listed(&missing)
+                        );
+                        let (second, more) = endpoint.ask(
+                            &format!("{label}-cover"),
+                            &prompts[4].1,
+                            &request,
+                            &schema,
+                            WINDOW_MAX_TOKENS,
+                            validate,
+                        )?;
+                        attempts.extend(more);
+                        match second {
+                            Some(second) => {
+                                let still = uncovered_points(&second.value, &checklist).len();
+                                uncovered.push(still);
+                                Some(if still < missing.len() { second } else { first })
+                            }
+                            None => Some(first),
+                        }
+                    }
+                }
+                None => None,
+            };
+            let mut record = call("precise_window", run, Some(index + 1), attempts, answer.is_some());
+            record.uncovered = uncovered;
             precise_seconds += record.seconds;
             precise_complete &= record.accepted;
-            println!("run {run} precise window {} accepted {} in {:.1}s", index + 1, record.accepted, record.seconds);
+            println!(
+                "run {run} precise window {} accepted {} uncovered {:?} in {:.1}s",
+                index + 1,
+                record.accepted,
+                record.uncovered,
+                record.seconds
+            );
             calls.push(record);
             precise_windows.push(answer.unwrap_or_else(empty_window));
         }

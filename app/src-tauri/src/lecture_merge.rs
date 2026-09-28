@@ -163,6 +163,23 @@ pub fn assemble_note(body: Accepted<NoteBody>, drafts: &[Draft]) -> Accepted<Not
     }
 }
 
+/// The draft points a precise window must cover. Points citing only segments that the
+/// draft's notices or code cite are left out: the precise note writes neither.
+pub fn precise_checklist(draft: &Draft) -> Vec<Item> {
+    let elsewhere: BTreeSet<&String> = draft
+        .notices
+        .iter()
+        .flat_map(|notice| &notice.source_refs)
+        .chain(draft.code.iter().flat_map(|item| &item.source_refs))
+        .collect();
+    draft
+        .points
+        .iter()
+        .filter(|point| point.source_refs.iter().any(|id| !elsewhere.contains(id)))
+        .cloned()
+        .collect()
+}
+
 const TRAILING_PUNCTUATION: [char; 7] = ['.', ',', '!', '?', ':', ';', '。'];
 
 /// Names compare equal once spacing is collapsed, trailing punctuation dropped and Latin
@@ -447,6 +464,23 @@ mod tests {
              [s13 05:00] 교착 상태를 다시 봅니다\n[s14 05:20] 안전 상태",
         )
         .expect("segments")
+    }
+
+    #[test]
+    fn the_checklist_leaves_out_points_that_only_cite_notices_or_code() {
+        let draft = Draft {
+            window: Window { first: "s21".into(), last: "s27".into() },
+            points: vec![
+                item("과제 안내", &["s22"]),
+                item("실습 명령어", &["s25", "s26"]),
+                item("은행원 알고리즘 과제와 구현", &["s22", "s23"]),
+                item("프로세스 확인", &["s27"]),
+            ],
+            notices: vec![notice(NoticeKind::Assignment, "과제", None, &["s22"])],
+            code: vec![Code { source_refs: refs(&["s25", "s26"]), ..code("gcc -o banker banker.c", true) }],
+        };
+        let contents: Vec<String> = precise_checklist(&draft).into_iter().map(|point| point.content).collect();
+        assert_eq!(contents, vec!["은행원 알고리즘 과제와 구현", "프로세스 확인"]);
     }
 
     #[test]

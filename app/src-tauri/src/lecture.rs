@@ -86,6 +86,7 @@ pub fn precise_window_prompt() -> String {
     format!(
         "너는 한국어 대학 강의의 전사 한 구간을 자세히 정리한다. 출력 형식은 lecture-precise-window-v1이다. 공지와 코드는 따로 모으므로 쓰지 않는다.\n{COMMON_RULES}\n\
          concepts에는 이 구간에서 설명한 개념과 그 설명을 쓴다. examples에는 이 구간의 비유·예시와 예제 풀이를 쓴다.\n\
+         사용자 메시지의 요점 목록은 이 구간에서 다룬 내용이다. 목록의 요점마다 그 내용을 개념·예제·용어 가운데 하나 이상으로 빠짐없이 쓴다.\n\
          terms는 이 구간의 주요 용어다. definition은 용어를 되풀이하지 말고 뜻을 설명한다. 영문 원어를 알면 term_en에 쓰고 모르면 null로 둔다.\n\
          시험·과제·퀴즈 공지, 복습 항목, 다음 시간 예고, 수업 진행 안내는 개념으로 쓰지 않는다."
     )
@@ -610,6 +611,23 @@ pub fn validate_precise_window(content: &str, finish_reason: &str, window: &[Seg
     accept(answer, checker, cleaner.repairs)
 }
 
+/// The checklist points a precise window left out: no concept, example or term cites any of
+/// the point's segments.
+pub fn uncovered_points(window: &PreciseWindow, checklist: &[Item]) -> Vec<Item> {
+    let cited: Vec<&String> = window
+        .concepts
+        .iter()
+        .flat_map(|concept| &concept.source_refs)
+        .chain(window.examples.iter().flat_map(|item| &item.source_refs))
+        .chain(window.terms.iter().flat_map(|term| &term.source_refs))
+        .collect();
+    checklist
+        .iter()
+        .filter(|point| !point.source_refs.iter().any(|id| cited.contains(&id)))
+        .cloned()
+        .collect()
+}
+
 /// The precise note's topic and review. `cited` holds the segments the merged note cites, so
 /// the topic cannot reach segments every window left out, such as chatter.
 pub fn validate_precise_synthesis(content: &str, finish_reason: &str, cited: &[Segment]) -> Result<Accepted<PreciseSynthesis>, Vec<Violation>> {
@@ -999,5 +1017,22 @@ mod tests {
         assert!(!precise_window_prompt().contains("topic"));
         assert!(precise_synthesis_prompt().contains("topic"));
         assert!(!precise_synthesis_prompt().contains("concepts에는"));
+        assert!(precise_window_prompt().contains("요점 목록"));
+    }
+
+    #[test]
+    fn a_point_counts_as_covered_when_any_list_cites_one_of_its_segments() {
+        let window: PreciseWindow = serde_json::from_value(precise_window()).expect("window");
+        let checklist = vec![
+            Item { content: "교착 상태의 정의".into(), source_refs: vec!["s1".into(), "s2".into()] },
+            Item { content: "권한 설정".into(), source_refs: vec!["s3".into()] },
+        ];
+        assert_eq!(uncovered_points(&window, &checklist), vec![checklist[1].clone()]);
+        assert!(uncovered_points(&window, &[]).is_empty());
+        let mut only_a_term = window.clone();
+        only_a_term.concepts.clear();
+        only_a_term.examples.clear();
+        only_a_term.terms[0].source_refs = vec!["s3".into()];
+        assert_eq!(uncovered_points(&only_a_term, &checklist), vec![checklist[0].clone()]);
     }
 }
