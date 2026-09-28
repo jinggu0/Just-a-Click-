@@ -3,24 +3,31 @@
 //! Usage: cargo run --release --example lecture_contract_check -- <repository root> <out dir> [runs]
 //!
 //! One run asks three times per five-minute window (points, notices, code) and assembles a
-//! draft, then writes the note body twice: from the drafts' points (the five-minute note)
-//! and from the whole transcript (the full pass). Notices and code in both notes come from
-//! the drafts. A refused answer is retried once with its violations attached, and the retry
-//! counts towards the time.
+//! draft, then writes two notes. The five-minute note's body is written from the drafts'
+//! points. The precise note is read one window at a time from the transcript, merged by the
+//! app and finished by one call for topic and review. Notices and code in both notes come
+//! from the drafts. A refused answer is retried once with its violations attached, and the
+//! retry counts towards the time.
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
 use app_lib::contract::{
     generation_schema, Segment, Violation, CODE_SCHEMA, NOTE_BODY_SCHEMA, NOTICES_SCHEMA, POINTS_SCHEMA,
+    PRECISE_SYNTHESIS_SCHEMA, PRECISE_WINDOW_SCHEMA,
 };
 use app_lib::lecture::{
-    code_prompt, note_body_prompt, notices_prompt, points_prompt, validate_code, validate_note_body,
-    validate_notices, validate_points, Accepted, Repair, CODE_PROMPT_VERSION, NOTE_BODY_PROMPT_VERSION,
-    NOTICES_PROMPT_VERSION, POINTS_PROMPT_VERSION,
+    code_prompt, note_body_prompt, notices_prompt, points_prompt, precise_synthesis_prompt, precise_window_prompt,
+    validate_code, validate_note_body, validate_notices, validate_points, validate_precise_synthesis,
+    validate_precise_window, Accepted, PreciseWindow, Repair, CODE_PROMPT_VERSION, NOTE_BODY_PROMPT_VERSION,
+    NOTICES_PROMPT_VERSION, POINTS_PROMPT_VERSION, PRECISE_SYNTHESIS_PROMPT_VERSION, PRECISE_WINDOW_PROMPT_VERSION,
+    PRECISE_WINDOW_VERSION,
 };
 use app_lib::lecture_fixture::{check_draft, check_note, Expectation, Fixture};
-use app_lib::lecture_merge::{assemble_draft, assemble_note, Draft, Note};
+use app_lib::lecture_merge::{
+    assemble_draft, assemble_note, assemble_precise_note, cited_by, merge_precise, name_key, synthesis_input, Draft,
+    Note,
+};
 use app_lib::llm::{complete_json, stream_draft, Completion, Server, ServerSettings};
 use app_lib::power::KeepAwake;
 use app_lib::process::ProcessGroup;
@@ -124,6 +131,55 @@ fn empty<T>() -> Accepted<Vec<T>> {
     Accepted { value: Vec::new(), repairs: Vec::new() }
 }
 
+/// A precise window refused twice adds nothing, but keeps its place in the numbering.
+fn empty_window() -> Accepted<PreciseWindow> {
+    Accepted {
+        value: PreciseWindow {
+            schema_version: PRECISE_WINDOW_VERSION.into(),
+            concepts: Vec::new(),
+            examples: Vec::new(),
+            terms: Vec::new(),
+        },
+        repairs: Vec::new(),
+    }
+}
+
+/// Whether each precise note reaches every window, how many names repeat after merging, and
+/// how many concepts each note has.
+fn precise_summary(notes: &[Assembled<Note>], windows: &[Vec<Segment>]) -> serde_json::Value {
+    let precise: Vec<&Assembled<Note>> = notes.iter().filter(|note| note.kind == "note_precise").collect();
+    let covers = |note: &Note, window: &[Segment]| {
+        note.concepts
+            .iter()
+            .flat_map(|concept| &concept.source_refs)
+            .any(|id| window.iter().any(|segment| &segment.id == id))
+    };
+    let cover_every_window = precise
+        .iter()
+        .filter(|note| windows.iter().all(|window| covers(&note.value, window)))
+        .count();
+    let duplicate_names: usize = precise
+        .iter()
+        .map(|note| {
+            let mut seen = BTreeSet::new();
+            note.value
+                .concepts
+                .iter()
+                .map(|concept| format!("concept:{}", name_key(&concept.name)))
+                .chain(note.value.terms.iter().map(|term| format!("term:{}", name_key(&term.term_ko))))
+                .filter(|key| !seen.insert(key.clone()))
+                .count()
+        })
+        .sum();
+    let concept_counts: Vec<usize> = precise.iter().map(|note| note.value.concepts.len()).collect();
+    serde_json::json!({
+        "notes": precise.len(),
+        "cover_every_window": cover_every_window,
+        "duplicate_names": duplicate_names,
+        "concept_counts": concept_counts,
+    })
+}
+
 fn round(value: f64, places: i32) -> f64 {
     let scale = 10f64.powi(places);
     (value * scale).round() / scale
@@ -211,9 +267,15 @@ fn stage_summary(calls: &[Call], stage: &str) -> Option<serde_json::Value> {
     }))
 }
 
-fn summarize(calls: &[Call], drafts: &[Assembled<Draft>], notes: &[Assembled<Note>], runs: usize) -> serde_json::Value {
+fn summarize(
+    calls: &[Call],
+    drafts: &[Assembled<Draft>],
+    notes: &[Assembled<Note>],
+    runs: usize,
+    windows: &[Vec<Segment>],
+) -> serde_json::Value {
     let mut stages = serde_json::Map::new();
-    for stage in ["points", "notices", "code", "note_body_from_drafts", "note_body_from_transcript"] {
+    for stage in ["points", "notices", "code", "note_body_from_drafts", "precise_window", "precise_synthesis"] {
         if let Some(summary) = stage_summary(calls, stage) {
             stages.insert(stage.to_string(), summary);
         }
@@ -250,11 +312,17 @@ fn summarize(calls: &[Call], drafts: &[Assembled<Draft>], notes: &[Assembled<Not
                 .filter(|note| note.run == run && note.kind == "note_from_drafts")
                 .map(|note| note.seconds)
                 .fold(0.0, f64::max);
+            let precise = notes
+                .iter()
+                .filter(|note| note.run == run && note.kind == "note_precise")
+                .map(|note| note.seconds)
+                .fold(0.0, f64::max);
             serde_json::json!({
                 "run": run,
                 "max_window_seconds": round(window, 1),
                 "note_body_from_drafts_seconds": round(note, 1),
                 "after_recording_estimate_seconds": round(2.0 * window + note, 1),
+                "precise_seconds": round(precise, 1),
             })
         })
         .collect();
@@ -275,6 +343,7 @@ fn summarize(calls: &[Call], drafts: &[Assembled<Draft>], notes: &[Assembled<Not
         "gating_all_passed": gating_all_passed,
         "windows_within_limit": {"within": windows_within, "windows": drafts.len(), "limit_seconds": WINDOW_LIMIT_SECONDS},
         "runs_within_after_recording_limit": {"within": runs_within, "runs": runs, "limit_seconds": AFTER_RECORDING_LIMIT_SECONDS},
+        "precise": precise_summary(notes, windows),
         "per_run": per_run,
     })
 }
@@ -315,6 +384,8 @@ fn main() -> Result<(), String> {
         (NOTICES_PROMPT_VERSION, notices_prompt()),
         (CODE_PROMPT_VERSION, code_prompt()),
         (NOTE_BODY_PROMPT_VERSION, note_body_prompt()),
+        (PRECISE_WINDOW_PROMPT_VERSION, precise_window_prompt()),
+        (PRECISE_SYNTHESIS_PROMPT_VERSION, precise_synthesis_prompt()),
     ];
     let prompt_map: serde_json::Map<String, serde_json::Value> = prompts
         .iter()
@@ -388,53 +459,92 @@ fn main() -> Result<(), String> {
             .iter()
             .map(|draft| serde_json::json!({"window": draft.window, "points": draft.points}).to_string())
             .collect();
-        let inputs = [
-            (
-                "note_from_drafts",
-                "note_body_from_drafts",
-                format!(
-                    "과목: {}\n\n구간 요점:\n{}\n\n요점이 인용한 전사 구간:\n{}",
-                    fixture.course,
-                    points_json.join("\n"),
-                    lines(&cited)
-                ),
-                ids(&cited),
-            ),
-            (
-                "note_from_transcript",
-                "note_body_from_transcript",
-                format!("과목: {}\n\n전사:\n{}", fixture.course, lines(&all)),
-                ids(&all),
-            ),
-        ];
-        for (kind, stage, user, allowed) in inputs {
-            let (body, attempts) = endpoint.ask(
-                &format!("run{run}-{kind}"),
-                &prompts[3].1,
-                &user,
-                &generation_schema(NOTE_BODY_SCHEMA, &allowed)?,
-                NOTE_MAX_TOKENS,
-                |completion| validate_note_body(&completion.content, &completion.finish_reason, &all),
+        let user = format!(
+            "과목: {}\n\n구간 요점:\n{}\n\n요점이 인용한 전사 구간:\n{}",
+            fixture.course,
+            points_json.join("\n"),
+            lines(&cited)
+        );
+        let (body, attempts) = endpoint.ask(
+            &format!("run{run}-note_from_drafts"),
+            &prompts[3].1,
+            &user,
+            &generation_schema(NOTE_BODY_SCHEMA, &ids(&cited))?,
+            NOTE_MAX_TOKENS,
+            |completion| validate_note_body(&completion.content, &completion.finish_reason, &all),
+        )?;
+        let accepted = body.is_some();
+        let record = call("note_body_from_drafts", run, None, attempts, accepted);
+        let seconds = record.seconds;
+        calls.push(record);
+        println!("run {run} note_from_drafts accepted {accepted} in {seconds:.1}s");
+        if let Some(body) = body {
+            let note = assemble_note(body, &drafts);
+            let expectations = check_note(&note.value, &fixture.traps);
+            notes_record.push(Assembled {
+                kind: "note_from_drafts",
+                run,
+                window: None,
+                complete: true,
+                seconds,
+                repairs: note.repairs,
+                expectations,
+                value: note.value,
+            });
+        }
+
+        // The precise note: each window from its own transcript, merged by the app, then one
+        // call for topic and review over the merged concepts.
+        let mut precise_windows = Vec::new();
+        let mut precise_seconds = 0.0;
+        let mut precise_complete = true;
+        for (index, window) in windows.iter().enumerate() {
+            let (answer, attempts) = endpoint.ask(
+                &format!("run{run}-precise-window{}", index + 1),
+                &prompts[4].1,
+                &format!("과목: {}\n\n전사:\n{}", fixture.course, lines(window)),
+                &generation_schema(PRECISE_WINDOW_SCHEMA, &ids(window))?,
+                WINDOW_MAX_TOKENS,
+                |completion| validate_precise_window(&completion.content, &completion.finish_reason, window),
             )?;
-            let accepted = body.is_some();
-            let record = call(stage, run, None, attempts, accepted);
-            let seconds = record.seconds;
+            let record = call("precise_window", run, Some(index + 1), attempts, answer.is_some());
+            precise_seconds += record.seconds;
+            precise_complete &= record.accepted;
+            println!("run {run} precise window {} accepted {} in {:.1}s", index + 1, record.accepted, record.seconds);
             calls.push(record);
-            println!("run {run} {kind} accepted {accepted} in {seconds:.1}s");
-            if let Some(body) = body {
-                let note = assemble_note(body, &drafts);
-                let expectations = check_note(&note.value, &fixture.traps);
-                notes_record.push(Assembled {
-                    kind,
-                    run,
-                    window: None,
-                    complete: true,
-                    seconds,
-                    repairs: note.repairs,
-                    expectations,
-                    value: note.value,
-                });
-            }
+            precise_windows.push(answer.unwrap_or_else(empty_window));
+        }
+        let body = merge_precise(precise_windows, &all);
+        let merged_cited = cited_by(&body.value, &all);
+        if merged_cited.is_empty() {
+            println!("run {run} note_precise skipped: no window cited anything");
+            continue;
+        }
+        let (synthesis, attempts) = endpoint.ask(
+            &format!("run{run}-precise-synthesis"),
+            &prompts[5].1,
+            &format!("과목: {}\n\n개념 목록:\n{}", fixture.course, synthesis_input(&body.value)),
+            &generation_schema(PRECISE_SYNTHESIS_SCHEMA, &ids(&merged_cited))?,
+            WINDOW_MAX_TOKENS,
+            |completion| validate_precise_synthesis(&completion.content, &completion.finish_reason, &merged_cited),
+        )?;
+        let record = call("precise_synthesis", run, None, attempts, synthesis.is_some());
+        precise_seconds += record.seconds;
+        calls.push(record);
+        println!("run {run} note_precise accepted {} in {precise_seconds:.1}s", synthesis.is_some());
+        if let Some(synthesis) = synthesis {
+            let note = assemble_precise_note(body, synthesis, &drafts);
+            let expectations = check_note(&note.value, &fixture.traps);
+            notes_record.push(Assembled {
+                kind: "note_precise",
+                run,
+                window: None,
+                complete: precise_complete,
+                seconds: round(precise_seconds, 2),
+                repairs: note.repairs,
+                expectations,
+                value: note.value,
+            });
         }
     }
     server.stop()?;
@@ -443,8 +553,9 @@ fn main() -> Result<(), String> {
         "fixture": fixture.fixture_id,
         "runs": runs,
         "prompts": prompts.iter().map(|(version, _)| *version).collect::<Vec<_>>(),
-        "max_tokens": {"window_call": WINDOW_MAX_TOKENS, "note_body": NOTE_MAX_TOKENS},
-        "summary": summarize(&calls, &drafts_record, &notes_record, runs),
+        "max_tokens": {"window_call": WINDOW_MAX_TOKENS, "note_body": NOTE_MAX_TOKENS,
+                       "precise_window": WINDOW_MAX_TOKENS, "precise_synthesis": WINDOW_MAX_TOKENS},
+        "summary": summarize(&calls, &drafts_record, &notes_record, runs, &windows),
         "calls": calls,
         "drafts": drafts_record,
         "notes": notes_record,

@@ -87,7 +87,7 @@ pub fn precise_window_prompt() -> String {
         "너는 한국어 대학 강의의 전사 한 구간을 자세히 정리한다. 출력 형식은 lecture-precise-window-v1이다. 공지와 코드는 따로 모으므로 쓰지 않는다.\n{COMMON_RULES}\n\
          concepts에는 이 구간에서 설명한 개념과 그 설명을 쓴다. examples에는 이 구간의 비유·예시와 예제 풀이를 쓴다.\n\
          terms는 이 구간의 주요 용어다. definition은 용어를 되풀이하지 말고 뜻을 설명한다. 영문 원어를 알면 term_en에 쓰고 모르면 null로 둔다.\n\
-         복습 항목, 다음 시간 예고, 수업 진행 안내는 개념으로 쓰지 않는다."
+         시험·과제·퀴즈 공지, 복습 항목, 다음 시간 예고, 수업 진행 안내는 개념으로 쓰지 않는다."
     )
 }
 
