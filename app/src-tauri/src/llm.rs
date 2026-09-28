@@ -294,6 +294,39 @@ pub fn complete_json(
     read_completion(&answer, started.elapsed().as_secs_f64())
 }
 
+/// Asks the server to tokenize `text` alone; the chat template's own tokens are not counted.
+pub fn tokenize_body(text: &str) -> serde_json::Value {
+    serde_json::json!({"content": text, "add_special": false})
+}
+
+pub fn read_token_count(answer: &serde_json::Value) -> Result<usize, String> {
+    answer["tokens"]
+        .as_array()
+        .map(Vec::len)
+        .ok_or_else(|| "the answer has no token list".to_string())
+}
+
+/// How many tokens the loaded model's tokenizer makes of `text`.
+pub fn count_tokens(base: &str, key: &str, text: &str) -> Result<usize, String> {
+    let client = reqwest::blocking::Client::new();
+    let response = client
+        .post(format!("{base}/tokenize"))
+        .header("Authorization", format!("Bearer {key}"))
+        .header("Content-Type", "application/json")
+        .body(tokenize_body(text).to_string())
+        .send()
+        .map_err(|error| format!("request failed: {error}"))?;
+    let status = response.status().as_u16();
+    let text = response.text().map_err(|error| format!("answer unreadable: {error}"))?;
+    if status != 200 {
+        let head: String = text.chars().take(300).collect();
+        return Err(format!("server answered {status}: {head}"));
+    }
+    let answer: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| format!("answer is not JSON: {error}"))?;
+    read_token_count(&answer)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +425,19 @@ mod tests {
         assert_eq!(completion.prompt_tokens, 1052);
         assert_eq!(completion.completion_tokens, 300);
         assert!(read_completion(&serde_json::json!({"choices": []}), 1.0).is_err());
+    }
+
+    #[test]
+    fn a_tokenize_request_sends_the_text_without_special_tokens() {
+        let body = tokenize_body("교착 상태");
+        assert_eq!(body["content"], serde_json::json!("교착 상태"));
+        assert_eq!(body["add_special"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn the_token_count_is_the_length_of_the_token_list() {
+        assert_eq!(read_token_count(&serde_json::json!({"tokens": [11, 22, 33]})).expect("count"), 3);
+        assert!(read_token_count(&serde_json::json!({"error": "nope"})).is_err());
     }
 
     #[test]
