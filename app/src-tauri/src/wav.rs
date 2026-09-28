@@ -68,6 +68,24 @@ impl WavWriter {
     }
 }
 
+/// Reads back a chunk this writer made: mono 16 kHz 16-bit PCM with the 44-byte header.
+pub fn read_samples(path: &Path) -> Result<Vec<i16>, String> {
+    let bytes = std::fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    if bytes.len() < HEADER_BYTES || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" || &bytes[36..40] != b"data" {
+        return Err(format!("{} is not a chunk this recorder wrote", path.display()));
+    }
+    let expected = header(0);
+    if bytes[20..36] != expected[20..36] {
+        return Err(format!("{} is not mono 16 kHz 16-bit PCM", path.display()));
+    }
+    let data = u32::from_le_bytes([bytes[40], bytes[41], bytes[42], bytes[43]]) as usize;
+    let end = (HEADER_BYTES + data).min(bytes.len());
+    Ok(bytes[HEADER_BYTES..end]
+        .chunks_exact(2)
+        .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,6 +106,20 @@ mod tests {
             u32::from_le_bytes([header[40], header[41], header[42], header[43]]),
             960_000
         );
+    }
+
+    #[test]
+    fn a_finished_chunk_reads_back_as_its_samples() {
+        let directory = std::env::temp_dir().join(format!("jac-wav-read-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("chunk.wav");
+        let mut writer = WavWriter::create(&path).unwrap();
+        writer.write(&[1, -1, 32_767, -32_768]).unwrap();
+        writer.finish().unwrap();
+        assert_eq!(read_samples(&path).unwrap(), vec![1, -1, 32_767, -32_768]);
+        std::fs::write(directory.join("other.wav"), b"not a wave file at all, just text").unwrap();
+        assert!(read_samples(&directory.join("other.wav")).is_err());
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]

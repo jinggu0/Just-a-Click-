@@ -9,6 +9,35 @@ use crate::process::{stop, ProcessGroup};
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
 const POLL: Duration = Duration::from_millis(100);
 
+/// Chunks shorter than this are not transcribed. The 0.43 s tail of a real lecture came back
+/// as a word that was never said, and the note then explained it as a concept.
+pub const MIN_CHUNK_SECONDS: f64 = 2.0;
+/// A peak at or below this is digital silence, such as the zeros loopback recording fills
+/// gaps with. Whisper turns silence into words ("감사합니다"). A quiet room through the
+/// microphone peaks far higher (above 2,000 in the recordings so far) and is still sent.
+pub const SILENT_PEAK: u16 = 32;
+
+/// Whether a chunk goes to whisper-cli.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Screen {
+    Transcribe,
+    TooShort,
+    Silent,
+}
+
+pub fn screen(samples: &[i16]) -> Screen {
+    if (samples.len() as f64) < MIN_CHUNK_SECONDS * crate::wav::SAMPLE_RATE as f64 {
+        return Screen::TooShort;
+    }
+    let peak = samples.iter().map(|sample| sample.unsigned_abs()).max().unwrap_or(0);
+    if peak <= SILENT_PEAK {
+        Screen::Silent
+    } else {
+        Screen::Transcribe
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Text(String),
@@ -92,6 +121,20 @@ mod tests {
             output,
             threads: 8,
         }
+    }
+
+    #[test]
+    fn short_and_digitally_silent_chunks_are_not_transcribed() {
+        let second = crate::wav::SAMPLE_RATE as usize;
+        assert_eq!(screen(&vec![1_000; second * 30]), Screen::Transcribe);
+        assert_eq!(screen(&vec![1_000; second * 2]), Screen::Transcribe);
+        assert_eq!(screen(&vec![1_000; second * 2 - 1]), Screen::TooShort);
+        assert_eq!(screen(&vec![0; second / 2]), Screen::TooShort);
+        assert_eq!(screen(&vec![0; second * 30]), Screen::Silent);
+        let mut quiet = vec![-32; second * 30];
+        assert_eq!(screen(&quiet), Screen::Silent);
+        quiet[100] = 33;
+        assert_eq!(screen(&quiet), Screen::Transcribe);
     }
 
     #[test]
