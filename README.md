@@ -24,5 +24,6 @@
 - [강의 계약 v2 시간 재측정](docs/validation/2026-09-26-lecture-contract-timing.md)
 - [강의 계약 v2 시간 재측정 2: 배경 부하 제거](docs/validation/2026-09-27-lecture-contract-timing-2.md)
 - [정밀 정리 창별 호출 실측](docs/validation/2026-09-28-precise-note-by-window.md)
+- [정밀 정리 합성 입력 줄이기 실측](docs/validation/2026-09-28-precise-synthesis-input.md)
 - [에이전트 작업 지침](AGENTS.md)
 - [Claude 작업 지침](CLAUDE.md)

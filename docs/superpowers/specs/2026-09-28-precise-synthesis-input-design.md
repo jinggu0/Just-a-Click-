@@ -1,7 +1,7 @@
 # 정밀 정리 합성 입력 줄이기 설계
 
 - 날짜: 2026-09-28
-- 상태: 사용자 승인 설계. 구현·검증 전
+- 상태: 사용자 승인 설계. 구현·검증 완료, 6절의 예산 선택 방식 채택([실측](../../validation/2026-09-28-precise-synthesis-input.md))
 - 대상: [결정 0010](../../decisions/0010-lecture-note-contract.md) 7절의 합성 호출(`lecture-precise-synthesis-v1`)
 - 근거: [정밀 정리 창별 호출 실측](../../validation/2026-09-28-precise-note-by-window.md) 4절
 
