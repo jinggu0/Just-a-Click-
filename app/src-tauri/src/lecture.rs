@@ -15,18 +15,22 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::contract::{
     reject_duplicate_keys, Checker, Segment, Violation, CODE_SCHEMA, NOTE_BODY_SCHEMA, NOTICES_SCHEMA,
-    POINTS_SCHEMA,
+    POINTS_SCHEMA, PRECISE_SYNTHESIS_SCHEMA, PRECISE_WINDOW_SCHEMA,
 };
 
 pub const POINTS_VERSION: &str = "lecture-points-v1";
 pub const NOTICES_VERSION: &str = "lecture-notices-v1";
 pub const CODE_VERSION: &str = "lecture-code-v1";
 pub const NOTE_BODY_VERSION: &str = "lecture-note-body-v1";
+pub const PRECISE_WINDOW_VERSION: &str = "lecture-precise-window-v1";
+pub const PRECISE_SYNTHESIS_VERSION: &str = "lecture-precise-synthesis-v1";
 
 pub const POINTS_PROMPT_VERSION: &str = "lecture-points-prompt-v1";
 pub const NOTICES_PROMPT_VERSION: &str = "lecture-notices-prompt-v1";
 pub const CODE_PROMPT_VERSION: &str = "lecture-code-prompt-v1";
 pub const NOTE_BODY_PROMPT_VERSION: &str = "lecture-note-body-prompt-v1";
+pub const PRECISE_WINDOW_PROMPT_VERSION: &str = "lecture-precise-window-prompt-v1";
+pub const PRECISE_SYNTHESIS_PROMPT_VERSION: &str = "lecture-precise-synthesis-prompt-v1";
 
 /// Words that only stand in for missing content; the screen shows those labels itself.
 const PLACEHOLDERS: [&str; 7] = ["언급 없음", "없음", "미정", "확인 필요", "해당 없음", "N/A", "n/a"];
@@ -74,6 +78,23 @@ pub fn note_body_prompt() -> String {
         "너는 한국어 대학 강의 한 회차의 강의 노트 본문을 lecture-note-body-v1 형식으로 쓴다. 공지와 코드는 따로 모으므로 쓰지 않는다.\n{COMMON_RULES}\n\
          topic은 이번 강의의 주제 한 문장이다. concepts는 핵심 개념과 그 설명이며 한 개 이상 쓴다. examples는 설명과 예제다.\n\
          terms는 주요 용어다. definition은 용어를 되풀이하지 말고 뜻을 설명한다. 영문 원어를 알면 term_en에 쓰고 모르면 null로 둔다.\n\
+         review는 복습할 항목이다. 개념 설명을 되풀이하지 말고 무엇을 복습할지 적는다."
+    )
+}
+
+pub fn precise_window_prompt() -> String {
+    format!(
+        "너는 한국어 대학 강의의 전사 한 구간을 자세히 정리한다. 출력 형식은 lecture-precise-window-v1이다. 공지와 코드는 따로 모으므로 쓰지 않는다.\n{COMMON_RULES}\n\
+         concepts에는 이 구간에서 설명한 개념과 그 설명을 쓴다. examples에는 이 구간의 비유·예시와 예제 풀이를 쓴다.\n\
+         terms는 이 구간의 주요 용어다. definition은 용어를 되풀이하지 말고 뜻을 설명한다. 영문 원어를 알면 term_en에 쓰고 모르면 null로 둔다.\n\
+         복습 항목, 다음 시간 예고, 수업 진행 안내는 개념으로 쓰지 않는다."
+    )
+}
+
+pub fn precise_synthesis_prompt() -> String {
+    format!(
+        "너는 한국어 대학 강의 한 회차의 개념 목록을 읽고 주제와 복습 항목을 쓴다. 출력 형식은 lecture-precise-synthesis-v1이다.\n{COMMON_RULES}\n\
+         topic은 이번 강의의 주제 한 문장이다. source_refs에는 주제를 가장 잘 보여 주는 구간만 쓴다.\n\
          review는 복습할 항목이다. 개념 설명을 되풀이하지 말고 무엇을 복습할지 적는다."
     )
 }
@@ -203,6 +224,25 @@ pub struct NoteBody {
     pub review: Vec<Item>,
 }
 
+/// One window of the precise note, read from that window's transcript.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreciseWindow {
+    pub schema_version: String,
+    pub concepts: Vec<Concept>,
+    pub examples: Vec<Item>,
+    pub terms: Vec<Term>,
+}
+
+/// The precise note's topic and review, written from the merged concepts.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreciseSynthesis {
+    pub schema_version: String,
+    pub topic: Item,
+    pub review: Vec<Item>,
+}
+
 /// One deterministic change the app made to an answer before accepting it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Repair {
@@ -260,6 +300,27 @@ fn cited(texts: &HashMap<&str, &str>, refs: &[String]) -> String {
         .join("\n")
 }
 
+fn english_in(texts: &HashMap<&str, &str>, term: &Term) -> Option<TermSource> {
+    let source = cited(texts, &term.source_refs).to_lowercase();
+    term.term_en.as_ref().map(|english| {
+        if source.contains(&english.to_lowercase()) {
+            TermSource::Transcript
+        } else {
+            TermSource::Model
+        }
+    })
+}
+
+/// Whether a term's English form appears in the segments it cites. Merging recomputes it
+/// after a term's sources grow.
+pub fn english_source(segments: &[Segment], term: &Term) -> Option<TermSource> {
+    let texts = segments
+        .iter()
+        .map(|segment| (segment.id.as_str(), segment.text.as_str()))
+        .collect();
+    english_in(&texts, term)
+}
+
 pub fn collapse(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -304,6 +365,16 @@ impl<'a> Cleaner<'a> {
         }
         self.seen.insert(key, path.to_string());
         true
+    }
+
+    fn concepts(&mut self, concepts: Vec<Concept>) -> Vec<Concept> {
+        let mut kept = Vec::new();
+        for (index, concept) in concepts.into_iter().enumerate() {
+            if self.keep(&format!("$.concepts[{index}]"), &concept.explanation) {
+                kept.push(concept);
+            }
+        }
+        kept
     }
 
     fn items(&mut self, path: &str, items: Vec<Item>) -> Vec<Item> {
@@ -380,14 +451,7 @@ impl<'a> Cleaner<'a> {
                 self.repair(format!("{path}.term_en"), "filler_removed", "placeholder English term".into());
                 term.term_en = None;
             }
-            let source = cited(&self.texts, &term.source_refs).to_lowercase();
-            term.term_en_source = term.term_en.as_ref().map(|english| {
-                if source.contains(&english.to_lowercase()) {
-                    TermSource::Transcript
-                } else {
-                    TermSource::Model
-                }
-            });
+            term.term_en_source = english_in(&self.texts, &term);
             kept.push(term);
         }
         kept
@@ -425,6 +489,20 @@ fn version(checker: &mut Checker, found: &str, expected: &str) {
 fn check_entry(checker: &mut Checker, path: String, text: &str, refs: &[String]) {
     checker.text(&path, text);
     checker.refs(&path, refs);
+}
+
+fn check_lists(checker: &mut Checker, concepts: &[Concept], examples: &[Item], terms: &[Term]) {
+    for (index, concept) in concepts.iter().enumerate() {
+        checker.text(&format!("$.concepts[{index}].name"), &concept.name);
+        check_entry(checker, format!("$.concepts[{index}]"), &concept.explanation, &concept.source_refs);
+    }
+    for (index, item) in examples.iter().enumerate() {
+        check_entry(checker, format!("$.examples[{index}]"), &item.content, &item.source_refs);
+    }
+    for (index, term) in terms.iter().enumerate() {
+        checker.text(&format!("$.terms[{index}].term_ko"), &term.term_ko);
+        check_entry(checker, format!("$.terms[{index}]"), &term.definition, &term.source_refs);
+    }
 }
 
 fn accept<T>(value: T, checker: Checker, repairs: Vec<Repair>) -> Result<Accepted<T>, Vec<Violation>> {
@@ -483,16 +561,10 @@ pub fn validate_code(content: &str, finish_reason: &str, window: &[Segment]) -> 
 pub fn validate_note_body(content: &str, finish_reason: &str, segments: &[Segment]) -> Result<Accepted<NoteBody>, Vec<Violation>> {
     let mut body: NoteBody = parse(content, finish_reason)?;
     let mut cleaner = Cleaner::new(segments);
-    let mut concepts = Vec::new();
-    for (index, concept) in std::mem::take(&mut body.concepts).into_iter().enumerate() {
-        if cleaner.keep(&format!("$.concepts[{index}]"), &concept.explanation) {
-            concepts.push(concept);
-        }
-    }
-    body.concepts = concepts;
-    body.examples = cleaner.items("$.examples", body.examples);
-    body.review = cleaner.items("$.review", body.review);
-    body.terms = cleaner.terms(body.terms);
+    body.concepts = cleaner.concepts(std::mem::take(&mut body.concepts));
+    body.examples = cleaner.items("$.examples", std::mem::take(&mut body.examples));
+    body.review = cleaner.items("$.review", std::mem::take(&mut body.review));
+    body.terms = cleaner.terms(std::mem::take(&mut body.terms));
 
     let mut checker = Checker::new(segments);
     version(&mut checker, &body.schema_version, NOTE_BODY_VERSION);
@@ -508,21 +580,50 @@ pub fn validate_note_body(content: &str, finish_reason: &str, segments: &[Segmen
         ],
     );
     check_entry(&mut checker, "$.topic".into(), &body.topic.content, &body.topic.source_refs);
-    for (index, concept) in body.concepts.iter().enumerate() {
-        checker.text(&format!("$.concepts[{index}].name"), &concept.name);
-        check_entry(&mut checker, format!("$.concepts[{index}]"), &concept.explanation, &concept.source_refs);
-    }
-    for (index, item) in body.examples.iter().enumerate() {
-        check_entry(&mut checker, format!("$.examples[{index}]"), &item.content, &item.source_refs);
-    }
-    for (index, term) in body.terms.iter().enumerate() {
-        checker.text(&format!("$.terms[{index}].term_ko"), &term.term_ko);
-        check_entry(&mut checker, format!("$.terms[{index}]"), &term.definition, &term.source_refs);
-    }
+    check_lists(&mut checker, &body.concepts, &body.examples, &body.terms);
     for (index, item) in body.review.iter().enumerate() {
         check_entry(&mut checker, format!("$.review[{index}]"), &item.content, &item.source_refs);
     }
     accept(body, checker, cleaner.repairs)
+}
+
+/// One window of the precise note. Only the window's segments may be cited. A window without
+/// concepts (a break, chatter) is accepted.
+pub fn validate_precise_window(content: &str, finish_reason: &str, window: &[Segment]) -> Result<Accepted<PreciseWindow>, Vec<Violation>> {
+    let mut answer: PreciseWindow = parse(content, finish_reason)?;
+    let mut cleaner = Cleaner::new(window);
+    answer.concepts = cleaner.concepts(std::mem::take(&mut answer.concepts));
+    answer.examples = cleaner.items("$.examples", std::mem::take(&mut answer.examples));
+    answer.terms = cleaner.terms(std::mem::take(&mut answer.terms));
+    let mut checker = Checker::new(window);
+    version(&mut checker, &answer.schema_version, PRECISE_WINDOW_VERSION);
+    bounded(
+        &mut checker,
+        PRECISE_WINDOW_SCHEMA,
+        &[
+            ("concepts", answer.concepts.len()),
+            ("examples", answer.examples.len()),
+            ("terms", answer.terms.len()),
+        ],
+    );
+    check_lists(&mut checker, &answer.concepts, &answer.examples, &answer.terms);
+    accept(answer, checker, cleaner.repairs)
+}
+
+/// The precise note's topic and review. `cited` holds the segments the merged note cites, so
+/// the topic cannot reach segments every window left out, such as chatter.
+pub fn validate_precise_synthesis(content: &str, finish_reason: &str, cited: &[Segment]) -> Result<Accepted<PreciseSynthesis>, Vec<Violation>> {
+    let mut answer: PreciseSynthesis = parse(content, finish_reason)?;
+    let mut cleaner = Cleaner::new(cited);
+    answer.review = cleaner.items("$.review", std::mem::take(&mut answer.review));
+    let mut checker = Checker::new(cited);
+    version(&mut checker, &answer.schema_version, PRECISE_SYNTHESIS_VERSION);
+    bounded(&mut checker, PRECISE_SYNTHESIS_SCHEMA, &[("review", answer.review.len())]);
+    check_entry(&mut checker, "$.topic".into(), &answer.topic.content, &answer.topic.source_refs);
+    for (index, item) in answer.review.iter().enumerate() {
+        check_entry(&mut checker, format!("$.review[{index}]"), &item.content, &item.source_refs);
+    }
+    accept(answer, checker, cleaner.repairs)
 }
 
 #[cfg(test)]
@@ -825,5 +926,78 @@ mod tests {
         assert!(notices_prompt().contains("date_text"));
         assert!(!points_prompt().contains("notices"));
         assert!(note_body_prompt().contains("공지와 코드는 따로"));
+    }
+
+    #[test]
+    fn a_precise_window_cites_only_its_own_segments_and_may_be_empty() {
+        let all = transcript();
+        let first = &all[..2];
+        let accepted = validate_precise_window(&precise_window().to_string(), "stop", first).expect("window");
+        assert!(accepted.repairs.is_empty());
+        assert_eq!(accepted.value.terms[0].term_en_source, Some(TermSource::Transcript));
+        let later = &all[2..];
+        assert_eq!(
+            rules(validate_precise_window(&precise_window().to_string(), "stop", later)),
+            vec!["unknown_source", "unknown_source", "unknown_source"]
+        );
+        let mut empty = precise_window();
+        empty["concepts"] = json!([]);
+        empty["examples"] = json!([]);
+        empty["terms"] = json!([]);
+        let accepted = validate_precise_window(&empty.to_string(), "stop", later).expect("a window without concepts");
+        assert!(accepted.value.concepts.is_empty());
+        let mut sourced = precise_window();
+        sourced["terms"][0]["term_en_source"] = json!("model");
+        assert_eq!(rules(validate_precise_window(&sourced.to_string(), "stop", first)), vec!["structure"]);
+        let mut long = precise_window();
+        long["concepts"] = json!((0..9)
+            .map(|index| json!({"name": format!("개념 {index}"), "explanation": format!("설명 {index}"),
+                                "source_refs": ["s1"]}))
+            .collect::<Vec<_>>());
+        assert_eq!(rules(validate_precise_window(&long.to_string(), "stop", first)), vec!["too_many_items"]);
+        let mut twice = precise_window();
+        twice["concepts"] = json!([
+            {"name": "교착 상태", "explanation": "서로 기다리며 멈춘 상태", "source_refs": ["s1"]},
+            {"name": "데드락", "explanation": "서로 기다리며 멈춘 상태", "source_refs": ["s1"]}
+        ]);
+        let accepted = validate_precise_window(&twice.to_string(), "stop", first).expect("window");
+        assert_eq!(kinds(&accepted.repairs), vec!["repeat_removed"]);
+    }
+
+    #[test]
+    fn the_synthesis_needs_a_topic_and_cites_only_the_merged_segments() {
+        let all = transcript();
+        let cited = vec![all[0].clone(), all[2].clone()];
+        let accepted = validate_precise_synthesis(&synthesis().to_string(), "stop", &cited).expect("synthesis");
+        assert!(accepted.repairs.is_empty());
+        let mut chatter = synthesis();
+        chatter["topic"]["source_refs"] = json!(["s1", "s4"]);
+        assert_eq!(rules(validate_precise_synthesis(&chatter.to_string(), "stop", &cited)), vec!["unknown_source"]);
+        let mut no_topic = synthesis();
+        no_topic.as_object_mut().unwrap().remove("topic");
+        assert_eq!(rules(validate_precise_synthesis(&no_topic.to_string(), "stop", &cited)), vec!["structure"]);
+        let mut no_review = synthesis();
+        no_review["review"] = json!([]);
+        assert!(validate_precise_synthesis(&no_review.to_string(), "stop", &cited).is_ok());
+        let ids = vec!["s1".to_string(), "s3".to_string()];
+        let schema = crate::contract::generation_schema(crate::contract::PRECISE_SYNTHESIS_SCHEMA, &ids).expect("schema");
+        assert_eq!(schema["$defs"]["segment"]["enum"], json!(["s1", "s3"]));
+    }
+
+    #[test]
+    fn the_precise_prompts_ask_for_their_own_lists_only() {
+        for prompt in [precise_window_prompt(), precise_synthesis_prompt()] {
+            for rule in ["source_refs", "빈 배열", "잡담", "데이터", "한 줄"] {
+                assert!(prompt.contains(rule), "prompt lacks {rule}");
+            }
+            for decided_by_the_app in ["from_transcript", "term_en_source"] {
+                assert!(!prompt.contains(decided_by_the_app), "prompt asks for {decided_by_the_app}");
+            }
+        }
+        assert!(precise_window_prompt().contains("공지와 코드는 따로"));
+        assert!(precise_window_prompt().contains("복습 항목"));
+        assert!(!precise_window_prompt().contains("topic"));
+        assert!(precise_synthesis_prompt().contains("topic"));
+        assert!(!precise_synthesis_prompt().contains("concepts에는"));
     }
 }
