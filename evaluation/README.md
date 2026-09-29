@@ -72,6 +72,55 @@ python scripts/run_concurrency.py --stage run --stt-threads 8 --llm-threads 2 --
 - 결과는 `evaluation/results/<날짜>-concurrency-<단계>-<조건>.json`에 저장하고, 원출력·서버 로그·카운터 CSV는 `artifacts/`에만 둔다. `--diagnostic`을 쓴 실행은 저장하지 않는다.
 - 이 측정은 낭독 음성을 녹음처럼 흘려보낸 추정이며, 실제 강의 녹음·요약 품질·앱 지연시간을 검증하지 않는다.
 
+## 강의 평가셋
+
+설계는 [강의 평가셋 설계](../docs/superpowers/specs/2026-09-29-lecture-eval-set-design.md)를 따른다. 강의 음성·전사·정답은 강의자의 내용이므로 `artifacts/eval-lectures/`에만 두고 커밋하지 않는다.
+
+```text
+artifacts/eval-lectures/<과목 약칭>-<날짜>/
+  audio/                  녹음 조각(chunk-0001.wav …)
+  course.txt              과목명
+  reference.json          정답(lecture-reference-v1)
+  runs/<실행 이름>/        lecture_pipeline 결과(lecture-pipeline.json, transcript.txt, power-*.json)
+```
+
+### 녹음 체크리스트
+
+1. **허락:** 강의자에게 녹음과 개인 평가용 사용 허락을 받는다. 허락이 없으면 평가셋에 넣지 않는다.
+2. **전원:** AC를 연결하고 뚜껑을 닫지 않는다(닫으면 대기 모드로 녹음이 끊긴다). Windows 전원 모드 "최고 성능"을 확인한다. 전원 설정은 사용자가 바꾼다.
+3. **준비:** 폴더와 `course.txt`를 만들고, 시작 전원 상태를 기록한다.
+
+```powershell
+$lecture = "artifacts\eval-lectures\<과목 약칭>-<날짜>"; $run = "$lecture\runs\<날짜>-recording"
+New-Item -ItemType Directory -Force $run | Out-Null; Set-Content -Encoding utf8 "$run\course.txt" "<과목명>"
+python -c "import json, scripts.bench_env as e; print(json.dumps({'power': e.power_status(), 'mode': e.power_mode()}))" > "$run\power-start.json"
+```
+
+4. **녹음과 처리:** 강의가 시작되면 실행한다. 녹음 중 전사와 5분 창 초안을 만들고, 끝나면 5분 노트와 정밀 정리를 만든다. 일찍 끝내려면 `$run\stop` 파일을 만든다.
+
+```powershell
+app\src-tauri\target\release\examples\lecture_pipeline.exe (Resolve-Path .) (Resolve-Path $run) 5400 > "$run\pipeline.log"
+```
+
+5. **끝:** 끝 전원 상태를 `power-end.json`으로 기록하고, 녹음 조각을 `$lecture\audio`로 옮긴다. 저장된 조각은 `--from $lecture\audio`로 다시 처리할 수 있다.
+6. **정답:** 전사(`transcript.txt`)로 정답 초안(`review.status: draft`)을 만들고, 강의를 들은 사람이 빠진 사실을 더하고 틀린 것을 고쳐 `reviewed`로 바꾼다. `transcript_run`은 정답의 구간 ID가 따른 실행 이름이다.
+
+### 채점
+
+```powershell
+python scripts/lecture_eval.py artifacts\eval-lectures\<강의 ID> --output evaluation\results\<날짜>-lecture-eval.json
+```
+
+- 정답과 같은 전사를 쓴 실행만 채점한다. 다른 전사의 실행은 구간 ID가 달라 건너뛴다.
+- 화면 출력에는 빠진 사실·공지가 나오지만, `--output` 집계에는 수치만 남아 커밋할 수 있다.
+- 합격 기준 v1은 다섯 가지다.
+  - 핵심 사실 재현율 95% 이상(5분 노트·정밀 정리 각각. 근거 구간 겹침 기반 대리 지표이며 사람 검수로 확정)
+  - 없는 공지 0건
+  - 공지 날짜·상태 오류 0건
+  - 정답 공지 재현율 100%
+  - AC 녹음에서 5분 노트 300초 이하
+- 코드·용어 표기는 기준선만 기록한다.
+
 ## 측정 범위
 
 `meeting-smoke.json`은 프로젝트에서 직접 작성한 합성 회의문이다. 개인정보나 실제 녹음은 포함하지 않는다. 취소된 제안, 담당자·미정 기한, 전사 시간 제외, 미검증 가속, 잡담을 올바르게 처리하는지 수동 검수한다.
