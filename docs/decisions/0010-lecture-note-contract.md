@@ -2,7 +2,7 @@
 
 - 날짜: 2026-09-26
 - 상태: 계약 v2(작업 나누기) 채택(2026-09-26). v1은 채택 보류였다. 시간은 배경 부하를 줄인 재측정(2026-09-27)에서 창·녹음 종료 후 기준 모두 통과
-- 근거 측정: [v1 실측](../validation/2026-09-26-lecture-contract.md), [v2 실측](../validation/2026-09-26-lecture-contract-v2.md), [시간 재측정](../validation/2026-09-26-lecture-contract-timing.md), [시간 재측정 2](../validation/2026-09-27-lecture-contract-timing-2.md), [정밀 정리 창별 호출](../validation/2026-09-28-precise-note-by-window.md), [합성 입력](../validation/2026-09-28-precise-synthesis-input.md), [v1 설계](../superpowers/specs/2026-09-25-lecture-note-contract-design.md), [v2 설계](../superpowers/specs/2026-09-26-lecture-contract-split-design.md)
+- 근거 측정: [v1 실측](../validation/2026-09-26-lecture-contract.md), [v2 실측](../validation/2026-09-26-lecture-contract-v2.md), [시간 재측정](../validation/2026-09-26-lecture-contract-timing.md), [시간 재측정 2](../validation/2026-09-27-lecture-contract-timing-2.md), [정밀 정리 창별 호출](../validation/2026-09-28-precise-note-by-window.md), [합성 입력](../validation/2026-09-28-precise-synthesis-input.md), [공지 운영 단어](../validation/2026-09-29-notice-signal.md), [v1 설계](../superpowers/specs/2026-09-25-lecture-note-contract-design.md), [v2 설계](../superpowers/specs/2026-09-26-lecture-contract-split-design.md)
 - 관련 결정: [0005](0005-summary-contract.md) 회의 계약, [0006](0006-lecture-first-product-scope.md) 제품 범위·5분 노트, [0007](0007-app-stack.md) 앱 구조, [0009](0009-concurrent-processing.md) 동시 처리
 
 ## 1. 결정
@@ -77,4 +77,8 @@
 합성 강의 5회([실측](../validation/2026-09-28-precise-note-by-window.md))에서 호출 20건과 노트 5건이 모두 채택됐다. 개념은 15~20개였고, 다섯 노트 모두 세 창의 요점을 빠짐없이 인용했다. 같은 이름은 0건이고 판정용 기대치는 모두 통과했다. 남은 문제는 둘이다. 복습·다음 시간 예고·과제가 개념으로 들어가는 일이 노트마다 1~3건 있다. 또 창 30개 강의에서는 합성 입력이 컨텍스트를 넘을 수 있었다(개념 150개면 약 8,200토큰, 추정). 이 문제는 아래와 같이 해결했다.
 
 **합성 입력은 예산에 맞춰 고른다(2026-09-28).** 예산은 컨텍스트 − 최대 출력 − 템플릿 몫 64토큰이고, 토큰 수는 llama-server `/tokenize`로 센다. 설명을 넣은 개념 목록이 예산 안이면 그것을 쓰고(개념 약 108개, 약 90분 강의까지), 넘으면 이름·출처만 쓴다(약 450개까지). 그것도 넘으면 호출하지 않고 `input_too_large`로 기록하며, 정밀 정리는 완료로 저장하지 않는다. 이름·출처만 넣으면 크기는 해결되지만 주제·복습이 흐려졌다. 다룬 부분을 짚은 주제가 9/10에서 3/10으로, 복습 항목이 중앙값 8개에서 5개로 줄었다. 그래서 들어가는 동안은 설명을 넣는다([실측](../validation/2026-09-28-precise-synthesis-input.md)). 긴 강의에서 이름 형식으로 쓴 주제·복습의 품질은 실제 강의에서 확인한다.
+
+## 8. 공지 운영 단어 검사 (2026-09-29)
+
+**공지는 인용 구간에 운영 단어가 있어야 남는다.** 실제 강의에서 예제·코드 설명이 시험·과제 공지로 분류됐다([실제 강의 1차](../validation/2026-09-28-lecture-real-1.md)). 그래서 공지가 인용한 구간에 시험·과제·제출·마감·휴강·강의실·준비물·출석·공지·발표·게시판 같은 운영 단어가 없으면 앱이 지우고 `no_notice_signal`로 기록한다. 창 전사에 운영 단어가 없으면 공지 호출도 하지 않는다. 날짜·범위 유무로 거르지 않는 이유는 기한이 모호한 진짜 과제 공지가 날짜 없이 남아야 하기 때문이다. 저장된 출력에 다시 적용한 결과, 실제 강의의 가짜 공지 6건은 모두 지워지고 합성 강의의 공지 75건은 모두 남았다([검증](../validation/2026-09-29-notice-signal.md)). 목록에 없는 표현의 공지를 놓칠 수 있으므로, 공지가 있는 실제 강의로 재현율을 확인한다.
 

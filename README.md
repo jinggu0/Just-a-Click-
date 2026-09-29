@@ -26,5 +26,6 @@
 - [정밀 정리 창별 호출 실측](docs/validation/2026-09-28-precise-note-by-window.md)
 - [정밀 정리 합성 입력 줄이기 실측](docs/validation/2026-09-28-precise-synthesis-input.md)
 - [실제 강의 수직 흐름 1차 검증](docs/validation/2026-09-28-lecture-real-1.md)
+- [공지 운영 단어 검사 검증](docs/validation/2026-09-29-notice-signal.md)
 - [에이전트 작업 지침](AGENTS.md)
 - [Claude 작업 지침](CLAUDE.md)

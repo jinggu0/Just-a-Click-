@@ -1,7 +1,7 @@
 # 공지 운영 단어 검사 설계
 
 - 날짜: 2026-09-29
-- 상태: 사용자 승인 설계. 구현·검증 전
+- 상태: 사용자 승인 설계. 구현·검증 완료([검증](../../validation/2026-09-29-notice-signal.md))
 - 대상: [결정 0010](../../decisions/0010-lecture-note-contract.md)의 공지 호출(`lecture-notices-v1`)과 앱의 공지 정리
 - 근거: [실제 강의 1차 검증](../../validation/2026-09-28-lecture-real-1.md) 3·7절
 
