@@ -448,13 +448,12 @@ impl<'a> Cleaner<'a> {
         kept
     }
 
-    /// Labels code and drops "code" without a single Latin letter or digit: commands and code
-    /// are written in Latin script, so such an item is a concept name the model put here.
+    /// Labels code and drops items that are not code-shaped (see `code_problem`).
     fn code(&mut self, code: Vec<Code>) -> Vec<Code> {
         let mut kept = Vec::new();
         for (index, mut item) in code.into_iter().enumerate() {
-            if !item.code.chars().any(|character| character.is_ascii_alphanumeric()) {
-                self.repair(format!("$.code[{index}]"), "not_code_removed", format!("\"{}\"", item.code.trim()));
+            if let Some(kind) = code_problem(&item) {
+                self.repair(format!("$.code[{index}]"), kind, format!("\"{}\"", item.code.trim()));
                 continue;
             }
             let source = cited(&self.texts, &item.source_refs);
@@ -481,6 +480,31 @@ impl<'a> Cleaner<'a> {
         }
         kept
     }
+}
+
+/// Code items citing more segments than this are a topic, not a piece of code.
+const MAX_CODE_SOURCES: usize = 3;
+
+/// Why a code item is not code-shaped, or `None` when it stays. Commands and code are written
+/// in Latin script with symbols, digits or arguments. On a real lecture the code call returned
+/// concept words ("fd", "Bluetooth"), misheard names with Hangul ("lc 함수") and items citing
+/// ten segments at once; only `seek_set`-like names and verbatim commands were code.
+pub fn code_problem(item: &Code) -> Option<&'static str> {
+    let code = item.code.trim();
+    if !code.chars().any(|character| character.is_ascii_alphanumeric()) {
+        return Some("not_code_removed");
+    }
+    let hangul = |character: char| matches!(character, '\u{AC00}'..='\u{D7A3}' | '\u{3131}'..='\u{318E}');
+    if code.chars().any(hangul) {
+        return Some("hangul_in_code_removed");
+    }
+    if !code.contains(char::is_whitespace) && code.chars().all(|character| character.is_ascii_alphabetic()) {
+        return Some("bare_word_removed");
+    }
+    if item.source_refs.len() > MAX_CODE_SOURCES {
+        return Some("wide_citation_removed");
+    }
+    None
 }
 
 /// Section limits are read from the schema, so the grammar and the check cannot disagree.
@@ -897,6 +921,46 @@ mod tests {
         assert_eq!(accepted.value.len(), 2);
         assert_eq!(kinds(&accepted.repairs), vec!["no_notice_signal"]);
         assert_eq!(accepted.repairs[0].path, "$.notices[2]");
+    }
+
+    #[test]
+    fn only_code_shaped_items_stay_in_the_code_list() {
+        let item = |code: &str, refs: &[&str]| Code {
+            code: code.into(),
+            language: Language::Shell,
+            explanation: "설명".into(),
+            from_transcript: false,
+            source_refs: refs.iter().map(|id| id.to_string()).collect(),
+        };
+        for kept in [
+            "chmod 755 run.sh", "gcc -o banker banker.c", "ps aux", "seek_set", "mk-node", "read-only", "O_CREAT",
+            "printf()", "read()",
+        ] {
+            assert_eq!(code_problem(&item(kept, &["s1"])), None, "{kept} should stay");
+        }
+        for (dropped, kind) in [
+            ("교착 상태", "not_code_removed"),
+            ("lc 함수", "hangul_in_code_removed"),
+            ("l식 함수", "hangul_in_code_removed"),
+            ("fd", "bare_word_removed"),
+            ("NULL", "bare_word_removed"),
+            ("Bluetooth", "bare_word_removed"),
+            ("  read ", "bare_word_removed"),
+            ("C", "bare_word_removed"),
+        ] {
+            assert_eq!(code_problem(&item(dropped, &["s1"])), Some(kind), "{dropped}");
+        }
+        assert_eq!(code_problem(&item("while (sum < 16)", &["s1", "s2", "s3"])), None);
+        assert_eq!(code_problem(&item("while (sum < 16)", &["s1", "s2", "s3", "s4"])), Some("wide_citation_removed"));
+
+        let window = transcript();
+        let mut value = code();
+        value["code"].as_array_mut().unwrap().push(json!(
+            {"code": "fd", "language": "c", "explanation": "파일 디스크립터", "source_refs": ["s3"]}));
+        let accepted = validate_code(&value.to_string(), "stop", &window).expect("code");
+        assert_eq!(accepted.value.len(), 2);
+        assert_eq!(kinds(&accepted.repairs), vec!["bare_word_removed"]);
+        assert_eq!(accepted.repairs[0].path, "$.code[2]");
     }
 
     #[test]
