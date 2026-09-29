@@ -28,5 +28,6 @@
 - [실제 강의 수직 흐름 1차 검증](docs/validation/2026-09-28-lecture-real-1.md)
 - [공지 운영 단어 검사 검증](docs/validation/2026-09-29-notice-signal.md)
 - [코드 목록 모양 검사 검증](docs/validation/2026-09-29-code-shape.md)
+- [강의 평가셋 구축과 강의 1 기준선](docs/validation/2026-09-29-lecture-eval-set.md)
 - [에이전트 작업 지침](AGENTS.md)
 - [Claude 작업 지침](CLAUDE.md)

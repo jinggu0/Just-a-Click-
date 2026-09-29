@@ -1,0 +1,53 @@
+{
+ "reference_schema": "lecture-reference-v1",
+ "lectures": [
+  {
+   "lecture_id": "sysprog-2026-09-28",
+   "review": "draft",
+   "runs": [
+    {
+     "run": "2026-09-29-replay",
+     "mode": "replay",
+     "after_recording_seconds": 1454.39,
+     "notices": {
+      "expected": 0,
+      "written": 0,
+      "recall": null,
+      "status_errors": 0,
+      "date_errors": 0,
+      "invented": 0
+     },
+     "code": {
+      "expected": 17,
+      "written": 8,
+      "recall": 0.11764705882352941,
+      "precision": 0.25
+     },
+     "terms": {
+      "terms": 16,
+      "correct_in_transcript": 0.4375,
+      "correct_in_notes": 0.4375
+     },
+     "facts": {
+      "five_minute_note": {
+       "key_recall": 0.9375,
+       "normal_recall": 0.6666666666666666
+      },
+      "precise_note": {
+       "key_recall": 0.9375,
+       "normal_recall": 0.6666666666666666
+      }
+     },
+     "verdict": {
+      "checks": {
+       "key_facts": false,
+       "notices": true,
+       "after_recording": null
+      },
+      "passed": false
+     }
+    }
+   ]
+  }
+ ]
+}
