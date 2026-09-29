@@ -3,7 +3,7 @@
  "lectures": [
   {
    "lecture_id": "sysprog-2026-09-28",
-   "review": "draft",
+   "review": "reviewed",
    "runs": [
     {
      "run": "2026-09-29-replay",
