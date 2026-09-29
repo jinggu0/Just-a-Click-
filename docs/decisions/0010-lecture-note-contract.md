@@ -2,7 +2,7 @@
 
 - 날짜: 2026-09-26
 - 상태: 계약 v2(작업 나누기) 채택(2026-09-26). v1은 채택 보류였다. 시간은 배경 부하를 줄인 재측정(2026-09-27)에서 창·녹음 종료 후 기준 모두 통과
-- 근거 측정: [v1 실측](../validation/2026-09-26-lecture-contract.md), [v2 실측](../validation/2026-09-26-lecture-contract-v2.md), [시간 재측정](../validation/2026-09-26-lecture-contract-timing.md), [시간 재측정 2](../validation/2026-09-27-lecture-contract-timing-2.md), [정밀 정리 창별 호출](../validation/2026-09-28-precise-note-by-window.md), [합성 입력](../validation/2026-09-28-precise-synthesis-input.md), [공지 운영 단어](../validation/2026-09-29-notice-signal.md), [v1 설계](../superpowers/specs/2026-09-25-lecture-note-contract-design.md), [v2 설계](../superpowers/specs/2026-09-26-lecture-contract-split-design.md)
+- 근거 측정: [v1 실측](../validation/2026-09-26-lecture-contract.md), [v2 실측](../validation/2026-09-26-lecture-contract-v2.md), [시간 재측정](../validation/2026-09-26-lecture-contract-timing.md), [시간 재측정 2](../validation/2026-09-27-lecture-contract-timing-2.md), [정밀 정리 창별 호출](../validation/2026-09-28-precise-note-by-window.md), [합성 입력](../validation/2026-09-28-precise-synthesis-input.md), [공지 운영 단어](../validation/2026-09-29-notice-signal.md), [코드 모양](../validation/2026-09-29-code-shape.md), [v1 설계](../superpowers/specs/2026-09-25-lecture-note-contract-design.md), [v2 설계](../superpowers/specs/2026-09-26-lecture-contract-split-design.md)
 - 관련 결정: [0005](0005-summary-contract.md) 회의 계약, [0006](0006-lecture-first-product-scope.md) 제품 범위·5분 노트, [0007](0007-app-stack.md) 앱 구조, [0009](0009-concurrent-processing.md) 동시 처리
 
 ## 1. 결정
@@ -81,4 +81,8 @@
 ## 8. 공지 운영 단어 검사 (2026-09-29)
 
 **공지는 인용 구간에 운영 단어가 있어야 남는다.** 실제 강의에서 예제·코드 설명이 시험·과제 공지로 분류됐다([실제 강의 1차](../validation/2026-09-28-lecture-real-1.md)). 그래서 공지가 인용한 구간에 시험·과제·제출·마감·휴강·강의실·준비물·출석·공지·발표·게시판 같은 운영 단어가 없으면 앱이 지우고 `no_notice_signal`로 기록한다. 창 전사에 운영 단어가 없으면 공지 호출도 하지 않는다. 날짜·범위 유무로 거르지 않는 이유는 기한이 모호한 진짜 과제 공지가 날짜 없이 남아야 하기 때문이다. 저장된 출력에 다시 적용한 결과, 실제 강의의 가짜 공지 6건은 모두 지워지고 합성 강의의 공지 75건은 모두 남았다([검증](../validation/2026-09-29-notice-signal.md)). 목록에 없는 표현의 공지를 놓칠 수 있으므로, 공지가 있는 실제 강의로 재현율을 확인한다.
+
+## 9. 코드 목록 모양 검사 (2026-09-29)
+
+**코드 목록에는 코드 모양인 항목만 남긴다.** 실제 강의에서 코드 호출이 개념 단어("fd", "Bluetooth"), 한글이 섞인 전사 오류("lc 함수"), 구간 10개를 인용한 항목을 코드로 냈다. 그래서 다음 항목을 앱이 지우고 각각 기록한다: 영문자·숫자가 없는 항목(기존), 한글이 섞인 항목, 공백 없는 영문자 한 단어, 인용 구간이 4개 이상인 항목. 공백 있는 명령(`chmod 755 run.sh`, `ps aux`)과 기호·숫자·밑줄이 있는 이름(`seek_set`, `read()`)은 남는다. 저장된 출력에 다시 적용한 결과, 합성 강의의 필수 명령은 하나도 지워지지 않았고 실제 강의 초안의 코드 43개는 8개로 줄었다([검증](../validation/2026-09-29-code-shape.md)). 여러 단어 개념어("exclusive flag")와 전사 오류가 들어간 명령 이름(`mk-node`)은 남는다.
 
