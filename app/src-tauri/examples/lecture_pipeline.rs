@@ -25,8 +25,8 @@ use app_lib::contract::{
     PRECISE_SYNTHESIS_SCHEMA, PRECISE_WINDOW_SCHEMA,
 };
 use app_lib::lecture::{
-    code_prompt, note_body_prompt, notices_prompt, points_prompt, precise_synthesis_prompt, precise_window_prompt,
-    uncovered_points, validate_code, validate_note_body, validate_notices, validate_points,
+    code_prompt, has_notice_signal, note_body_prompt, notices_prompt, points_prompt, precise_synthesis_prompt,
+    precise_window_prompt, uncovered_points, validate_code, validate_note_body, validate_notices, validate_points,
     validate_precise_synthesis, validate_precise_window, Accepted, Item, PreciseWindow, Repair, PRECISE_WINDOW_VERSION,
 };
 use app_lib::lecture_merge::{
@@ -280,15 +280,23 @@ impl Pipeline {
             |completion| validate_points(&completion.content, &completion.finish_reason, &window),
         )?;
         self.calls.push(call("points", Some(index), attempts, points.is_some(), self.at()));
-        let (notices, attempts) = self.endpoint.ask(
-            &format!("{label}-notices"),
-            &notices_prompt(),
-            &user,
-            &generation_schema(NOTICES_SCHEMA, &window_ids)?,
-            WINDOW_MAX_TOKENS,
-            |completion| validate_notices(&completion.content, &completion.finish_reason, &window),
-        )?;
-        self.calls.push(call("notices", Some(index), attempts, notices.is_some(), self.at()));
+        // A window with no operational word gets no notices call: every notice it could
+        // return would be dropped anyway.
+        let notices_skipped = !has_notice_signal(&lines(&window));
+        let notices = if notices_skipped {
+            Some(empty())
+        } else {
+            let (notices, attempts) = self.endpoint.ask(
+                &format!("{label}-notices"),
+                &notices_prompt(),
+                &user,
+                &generation_schema(NOTICES_SCHEMA, &window_ids)?,
+                WINDOW_MAX_TOKENS,
+                |completion| validate_notices(&completion.content, &completion.finish_reason, &window),
+            )?;
+            self.calls.push(call("notices", Some(index), attempts, notices.is_some(), self.at()));
+            notices
+        };
         let (code, attempts) = self.endpoint.ask(
             &format!("{label}-code"),
             &code_prompt(),
@@ -310,6 +318,7 @@ impl Pipeline {
         self.draft_records.push(serde_json::json!({
             "window": index,
             "complete": complete,
+            "notices_skipped": notices_skipped,
             "seconds": round(seconds),
             "ended_at": round(self.at()),
             "repairs": draft.repairs,

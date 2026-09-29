@@ -17,8 +17,8 @@ use app_lib::contract::{
     PRECISE_SYNTHESIS_SCHEMA, PRECISE_WINDOW_SCHEMA,
 };
 use app_lib::lecture::{
-    code_prompt, note_body_prompt, notices_prompt, points_prompt, precise_synthesis_prompt, precise_window_prompt,
-    uncovered_points, validate_code, validate_note_body, validate_notices, validate_points,
+    code_prompt, has_notice_signal, note_body_prompt, notices_prompt, points_prompt, precise_synthesis_prompt,
+    precise_window_prompt, uncovered_points, validate_code, validate_note_body, validate_notices, validate_points,
     validate_precise_synthesis, validate_precise_window, Accepted, Item, PreciseWindow, Repair, CODE_PROMPT_VERSION,
     NOTE_BODY_PROMPT_VERSION, NOTICES_PROMPT_VERSION, POINTS_PROMPT_VERSION, PRECISE_SYNTHESIS_PROMPT_VERSION,
     PRECISE_WINDOW_PROMPT_VERSION, PRECISE_WINDOW_VERSION,
@@ -76,6 +76,9 @@ struct Assembled<T: Serialize> {
     repairs: Vec<Repair>,
     expectations: Vec<Expectation>,
     value: T,
+    /// Drafts only: the window had no operational word, so notices were not asked for.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    notices_skipped: bool,
 }
 
 struct Endpoint {
@@ -444,16 +447,25 @@ fn main() -> Result<(), String> {
                 WINDOW_MAX_TOKENS,
                 |completion| validate_points(&completion.content, &completion.finish_reason, window),
             )?;
+            let first_call = calls.len();
             calls.push(call("points", run, Some(index + 1), attempts, points.is_some()));
-            let (notices, attempts) = endpoint.ask(
-                &format!("{label}-notices"),
-                &prompts[1].1,
-                &user,
-                &generation_schema(NOTICES_SCHEMA, &window_ids)?,
-                WINDOW_MAX_TOKENS,
-                |completion| validate_notices(&completion.content, &completion.finish_reason, window),
-            )?;
-            calls.push(call("notices", run, Some(index + 1), attempts, notices.is_some()));
+            // A window with no operational word gets no notices call: every notice it could
+            // return would be dropped anyway.
+            let notices_skipped = !has_notice_signal(&lines(window));
+            let notices = if notices_skipped {
+                Some(empty())
+            } else {
+                let (notices, attempts) = endpoint.ask(
+                    &format!("{label}-notices"),
+                    &prompts[1].1,
+                    &user,
+                    &generation_schema(NOTICES_SCHEMA, &window_ids)?,
+                    WINDOW_MAX_TOKENS,
+                    |completion| validate_notices(&completion.content, &completion.finish_reason, window),
+                )?;
+                calls.push(call("notices", run, Some(index + 1), attempts, notices.is_some()));
+                notices
+            };
             let (code, attempts) = endpoint.ask(
                 &format!("{label}-code"),
                 &prompts[2].1,
@@ -464,7 +476,7 @@ fn main() -> Result<(), String> {
             )?;
             calls.push(call("code", run, Some(index + 1), attempts, code.is_some()));
 
-            let seconds: f64 = calls[calls.len() - 3..].iter().map(|call| call.seconds).sum();
+            let seconds: f64 = calls[first_call..].iter().map(|call| call.seconds).sum();
             let complete = points.is_some() && notices.is_some() && code.is_some();
             let draft = assemble_draft(
                 window,
@@ -476,6 +488,7 @@ fn main() -> Result<(), String> {
             println!("run {run} window {} complete {complete} in {seconds:.1}s", index + 1);
             drafts.push(draft.value.clone());
             drafts_record.push(Assembled {
+                notices_skipped,
                 kind: "draft",
                 run,
                 window: Some(index + 1),
@@ -515,6 +528,7 @@ fn main() -> Result<(), String> {
             let note = assemble_note(body, &drafts);
             let expectations = check_note(&note.value, &fixture.traps);
             notes_record.push(Assembled {
+                notices_skipped: false,
                 kind: "note_from_drafts",
                 run,
                 window: None,
@@ -635,6 +649,7 @@ fn main() -> Result<(), String> {
             let note = assemble_precise_note(body, synthesis, &drafts);
             let expectations = check_note(&note.value, &fixture.traps);
             notes_record.push(Assembled {
+                notices_skipped: false,
                 kind: "note_precise",
                 run,
                 window: None,
